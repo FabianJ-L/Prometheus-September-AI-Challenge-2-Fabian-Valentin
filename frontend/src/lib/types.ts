@@ -1,107 +1,177 @@
-// Mirror of backend/app/models/schemas.py — keep in sync.
+/**
+ * NOESIS domain types.
+ *
+ * These are the contract between the UI and whatever produces the teaching
+ * signal — today a deterministic local model (`lib/teacher.ts` → mock), later a
+ * backend / LLM. No component may branch on where a `Diagnosis` came from.
+ */
+
+// ---------------------------------------------------------------------------
+// Concepts
+// ---------------------------------------------------------------------------
 
 export type MasteryLevel = "mastered" | "developing" | "uncertain" | "not_assessed";
-export type PredictionKind = "value" | "output" | "choice";
-export type SessionPhase =
-  | "predict"
-  | "execute"
-  | "compare"
-  | "diagnose"
-  | "understand"
-  | "retry"
-  | "done";
 
-export interface ConceptNode {
+export interface Concept {
   id: string;
   label: string;
   summary: string;
   prerequisites: string[];
+  /** 0..1 */
+  mastery: number;
+  level: MasteryLevel;
+  evidenceCount: number;
+  recentMisconceptions: number;
+  /** Fixed position in the concept map, in SVG user units. */
+  x: number;
+  y: number;
 }
 
-export interface ConceptState {
-  concept_id: string;
-  score: number;
-  level: MasteryLevel;
-  evidence_count: number;
-  last_updated: string;
-}
+// ---------------------------------------------------------------------------
+// Lessons & execution
+// ---------------------------------------------------------------------------
 
 export interface Lesson {
   id: string;
   track: string;
   unit: string;
   title: string;
-  order: number;
+  /** 1-based position within the unit, for the progress rail. */
+  index: number;
+  total: number;
   concepts: string[];
-  starter_code: string;
-  prediction_kind: PredictionKind;
-  prediction_prompt: string;
-  prediction_target: string | null;
-  choices: string[];
-  expected_answer: unknown;
+  code: string;
+  /** e.g. "What will `total` be?" */
+  predictionPrompt: string;
+  /** Variable the student is predicting. */
+  predictionTarget: string;
+  /** Ground truth, as displayed. */
+  actual: string;
+  steps: ExecutionStep[];
+  /** Set when this lesson exists to re-test a concept after a diagnosis. */
+  retestOf?: string;
 }
 
-export interface TraceStep {
-  step: number;
+export interface VariableBinding {
+  name: string;
+  value: string;
+  previous?: string;
+  changed: boolean;
+}
+
+export interface ExecutionStep {
+  index: number;
+  /** 1-based line in `Lesson.code`. */
   line: number;
-  source: string;
-  event: string;
-  locals: Record<string, unknown>;
-  stdout: string;
+  label: string;
+  /** 1-based loop iteration, or null outside a loop. */
+  iteration: number | null;
+  scope: VariableBinding[];
+  stdout: string[];
+  callStack: string[];
 }
 
-export interface ExecutionTrace {
-  lesson_id: string;
-  steps: TraceStep[];
-  final_locals: Record<string, unknown>;
-  stdout: string;
-  error: string | null;
-  truncated: boolean;
-}
+// ---------------------------------------------------------------------------
+// Diagnosis
+// ---------------------------------------------------------------------------
 
-export interface PredictionCheck {
+export interface Comparison {
+  target: string;
+  predicted: string;
+  actual: string;
   matches: boolean;
-  predicted: unknown;
-  actual: unknown;
-  divergence_step: number | null;
-  note: string;
+}
+
+export interface IterationRow {
+  iteration: number;
+  bindings: string;
+  actual: string;
+  /** What the student's implied model produces, when it can be reconstructed. */
+  studentModel: string | null;
+  diverged: boolean;
 }
 
 export interface Misconception {
   id: string;
   label: string;
   description: string;
-  related_concepts: string[];
+  concepts: string[];
+  /** Iteration-by-iteration replay of prediction vs reality. */
+  timeline: IterationRow[];
+  divergenceIteration: number | null;
 }
 
-export interface SocraticTurn {
-  role: "teacher" | "student";
-  intent: "question" | "hint" | "prompt" | "confirm";
-  text: string;
-  choices: string[];
-  reveals_solution: boolean;
-  created_at: string;
-}
-
-export interface DiagnosticResult {
-  lesson_id: string;
-  prediction_check: PredictionCheck;
-  misconception: Misconception | null;
-  confidence: number;
-  concept_deltas: Record<string, number>;
-  first_turn: SocraticTurn | null;
-  mock: boolean;
-}
-
-export interface SessionState {
+export interface TeacherOption {
   id: string;
-  lesson_id: string;
-  phase: SessionPhase;
-  started_at: string;
-  prediction: { lesson_id: string; kind: PredictionKind; answer: unknown; rationale: string | null } | null;
-  trace: ExecutionTrace | null;
-  diagnostic: DiagnosticResult | null;
-  turns: SocraticTurn[];
-  concept_states: Record<string, ConceptState>;
-  prediction_accuracy: number | null;
+  label: string;
+  correct: boolean;
+  /** Shown after the student picks this option. */
+  response: string;
+}
+
+export interface TeacherQuestion {
+  id: string;
+  /** Only rendered under teaching styles that allow framing. */
+  preamble?: string;
+  /** Line to point the student at, when the style allows a pointer. */
+  focusLine?: number;
+  text: string;
+  options: TeacherOption[];
+  /** Progressive hints: concept → strategy → steps. */
+  hints: string[];
+}
+
+export interface ConceptUpdate {
+  conceptId: string;
+  label: string;
+  from: number;
+  to: number;
+}
+
+export interface Diagnosis {
+  comparison: Comparison;
+  misconception: Misconception | null;
+  question: TeacherQuestion | null;
+  /** 0..1 */
+  confidence: number;
+  conceptUpdates: ConceptUpdate[];
+  /** Which lesson re-tests the same concept, if a retest is warranted. */
+  retestLessonId: string | null;
+}
+
+export interface AnswerEvaluation {
+  correct: boolean;
+  response: string;
+  /** Next hint to reveal when the answer was wrong, if any remain. */
+  nextHint: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Session history
+// ---------------------------------------------------------------------------
+
+export type SessionOutcome =
+  | "misconception_resolved"
+  | "concept_reinforced"
+  | "still_developing";
+
+export interface SessionRecord {
+  id: string;
+  title: string;
+  unit: string;
+  at: string;
+  durationMin: number;
+  outcome: SessionOutcome;
+  predictionAccuracy: number;
+  misconceptionsDetected: number;
+  misconceptionsResolved: number;
+  conceptsImproved: string[];
+}
+
+export interface MisconceptionRecord {
+  id: string;
+  label: string;
+  status: "resolved" | "improving" | "needs_practice";
+  at: string;
+  occurrences: number;
 }

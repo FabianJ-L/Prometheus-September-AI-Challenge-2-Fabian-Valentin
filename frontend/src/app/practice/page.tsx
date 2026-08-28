@@ -1,41 +1,86 @@
-import { api } from "@/lib/api";
-import { Bar, Panel } from "@/components/ui";
-import type { ConceptNode } from "@/lib/types";
+"use client";
 
-export default async function PracticePage() {
-  let concepts: ConceptNode[] = [];
-  try {
-    concepts = await api.listConcepts();
-  } catch {
-    /* backend down — render empty */
-  }
+import Link from "next/link";
+import { ArrowRight, Sparkles } from "lucide-react";
+import { ConceptCard } from "@/components/concepts/ConceptCard";
+import { Page, PageHeader, SectionTitle } from "@/components/layout/PageHeader";
+import { Button } from "@/components/ui/Button";
+import { InlineCode } from "@/components/learning/InlineCode";
+import { Card, CardBody, EmptyState } from "@/components/ui/Card";
+import { MasteryMeter } from "@/components/ui/ProgressBar";
+import { useMentalModel } from "@/lib/mental-model";
+import { pct } from "@/lib/utils";
+
+export default function PracticePage() {
+  const { concepts, recommended } = useMentalModel();
+  const ranked = [...concepts].sort((a, b) => a.mastery - b.mastery);
 
   return (
-    <div className="mx-auto max-w-3xl px-8 py-12">
-      <h1 className="text-xl text-fg">Practice</h1>
-      <p className="mt-1 text-sm text-muted">Target a concept. NOESIS recommends based on recent misconceptions.</p>
+    <Page>
+      <PageHeader
+        title="Practice"
+        description="Strengthen the concepts that need attention. What NOESIS recommends is derived from your misconceptions, not from where you are in the course."
+      />
 
-      <Panel className="mt-6" title="Recommended">
-        <p className="text-sm text-fg">
-          Complete a few lessons in <span className="text-accent">Learn</span> — recommendations appear once the
-          student model has evidence.
-        </p>
-      </Panel>
+      <section className="mt-7">
+        <SectionTitle>Recommended</SectionTitle>
+        {recommended ? (
+          <Card className="border-accent/25">
+            <CardBody className="flex flex-wrap items-end justify-between gap-6 p-6">
+              <div className="min-w-0 flex-1">
+                <div className="mb-2 flex items-center gap-1.5 text-accent">
+                  <Sparkles size={13} aria-hidden />
+                  <span className="text-2xs font-medium uppercase tracking-[0.09em]">
+                    Adaptive suggestion
+                  </span>
+                </div>
+                <h2 className="text-[17px] font-medium text-fg">{recommended.label}</h2>
+                <p className="mt-1 max-w-lg text-[13px] leading-relaxed text-fg-muted">
+                  <InlineCode text={recommended.summary} />
+                </p>
+                <p className="mt-2.5 text-[12px] text-fg-subtle">
+                  Based on {recommended.recentMisconceptions} recent misconception
+                  {recommended.recentMisconceptions === 1 ? "" : "s"} · currently at{" "}
+                  <span className="numeric font-mono text-fg-muted">{pct(recommended.mastery)}</span>
+                </p>
+                <div className="mt-4 max-w-xs">
+                  <MasteryMeter value={recommended.mastery} tone="warning" />
+                </div>
+              </div>
+              <Link href="/learn">
+                <Button variant="primary">
+                  Start practice
+                  <ArrowRight size={14} aria-hidden />
+                </Button>
+              </Link>
+            </CardBody>
+          </Card>
+        ) : (
+          <Card>
+            <EmptyState
+              title="No recommendation yet"
+              description="Complete a lesson in Learn. NOESIS recommends a concept once it has evidence about how you think, rather than guessing from your position in the course."
+              action={
+                <Link href="/learn">
+                  <Button variant="primary" size="sm">
+                    Start a lesson
+                    <ArrowRight size={14} aria-hidden />
+                  </Button>
+                </Link>
+              }
+            />
+          </Card>
+        )}
+      </section>
 
-      <div className="mt-6 grid grid-cols-2 gap-3">
-        {concepts.map((c) => (
-          <button
-            key={c.id}
-            className="rounded-lg border border-line bg-ink-800 p-4 text-left hover:border-accent"
-          >
-            <div className="text-sm text-fg">{c.label}</div>
-            <div className="mt-3">
-              <Bar value={0} />
-            </div>
-            <div className="mt-1 text-xs text-muted">not assessed</div>
-          </button>
-        ))}
-      </div>
-    </div>
+      <section className="mt-9">
+        <SectionTitle>Choose a concept</SectionTitle>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4">
+          {ranked.map((c) => (
+            <ConceptCard key={c.id} concept={c} href={`/concepts?concept=${c.id}`} />
+          ))}
+        </div>
+      </section>
+    </Page>
   );
 }

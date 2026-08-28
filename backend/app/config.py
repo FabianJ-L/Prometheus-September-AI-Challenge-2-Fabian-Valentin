@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from pydantic import Field, field_validator
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,10 +20,8 @@ class Settings(BaseSettings):
     env: str = Field(default="development", alias="NOESIS_ENV")
     host: str = Field(default="127.0.0.1", alias="NOESIS_HOST")
     port: int = Field(default=8000, alias="NOESIS_PORT")
-    cors_origins: list[str] = Field(
-        default_factory=lambda: ["http://localhost:3000"],
-        alias="NOESIS_CORS_ORIGINS",
-    )
+    # Comma-separated in the env; use `cors_origins` for the parsed list.
+    cors_origins_raw: str = Field(default="http://localhost:3000", alias="NOESIS_CORS_ORIGINS")
 
     # --- AI --------------------------------------------------------------
     anthropic_api_key: str | None = Field(default=None, alias="ANTHROPIC_API_KEY")
@@ -35,12 +33,9 @@ class Settings(BaseSettings):
     exec_timeout_seconds: float = Field(default=5.0, alias="NOESIS_EXEC_TIMEOUT_SECONDS")
     exec_max_steps: int = Field(default=2000, alias="NOESIS_EXEC_MAX_STEPS")
 
-    @field_validator("cors_origins", mode="before")
-    @classmethod
-    def _split_csv(cls, v: object) -> object:
-        if isinstance(v, str):
-            return [item.strip() for item in v.split(",") if item.strip()]
-        return v
+    @property
+    def cors_origins(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins_raw.split(",") if o.strip()]
 
     @property
     def ai_enabled(self) -> bool:
