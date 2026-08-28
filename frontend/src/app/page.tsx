@@ -1,67 +1,127 @@
-import Link from "next/link";
-import { api } from "@/lib/api";
-import { Bar, Panel } from "@/components/ui";
-import type { ConceptNode, Lesson } from "@/lib/types";
+"use client";
 
-async function safe<T>(p: Promise<T>, fallback: T): Promise<T> {
-  try {
-    return await p;
-  } catch {
-    return fallback;
-  }
+import Link from "next/link";
+import { ArrowRight, Clock } from "lucide-react";
+import { Page, SectionTitle } from "@/components/layout/PageHeader";
+import { ConceptCard } from "@/components/concepts/ConceptCard";
+import { Badge, Dot } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Card, CardBody } from "@/components/ui/Card";
+import { ProgressBar } from "@/components/ui/ProgressBar";
+import { useMentalModel } from "@/lib/mental-model";
+import { getLesson } from "@/mock/lessons";
+import { OUTCOME_LABEL, SESSIONS } from "@/mock/sessions";
+import { relativeTime } from "@/lib/utils";
+import type { SessionOutcome } from "@/lib/types";
+
+const OUTCOME_TONE: Record<SessionOutcome, "success" | "accent" | "warning"> = {
+  misconception_resolved: "success",
+  concept_reinforced: "accent",
+  still_developing: "warning",
+};
+
+function greeting(): string {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning.";
+  if (h < 18) return "Good afternoon.";
+  return "Good evening.";
 }
 
-export default async function Dashboard() {
-  const [lessons, concepts] = await Promise.all([
-    safe<Lesson[]>(api.listLessons(), []),
-    safe<ConceptNode[]>(api.listConcepts(), []),
-  ]);
-  const next = lessons[0];
+export default function Dashboard() {
+  const { concepts } = useMentalModel();
+  const lesson = getLesson("loops-sum");
+
+  // Unit progress = how far through the unit's lessons the student is.
+  const unitProgress = (lesson.index - 1) / lesson.total;
 
   return (
-    <div className="mx-auto max-w-4xl px-8 py-12">
-      <h1 className="text-2xl font-medium text-fg">Good afternoon.</h1>
-      <p className="mt-1 text-sm text-muted">Continue where you left off.</p>
+    <Page>
+      <header>
+        <h1 className="text-[22px] font-medium tracking-[-0.015em] text-fg">{greeting()}</h1>
+        <p className="mt-1 text-[13px] text-fg-muted">Continue where you left off.</p>
+      </header>
 
-      {next ? (
-        <Panel className="mt-8" title={next.track}>
-          <div className="flex items-start justify-between gap-6">
-            <div>
-              <div className="text-lg text-fg">{next.unit}</div>
-              <div className="mt-3 w-64">
-                <Bar value={0.15} />
-              </div>
-              <div className="mt-1 text-xs text-muted">just getting started</div>
+      <Card className="mt-7">
+        <CardBody className="flex flex-wrap items-end justify-between gap-6 p-6">
+          <div className="min-w-0 flex-1">
+            <div className="label-caps mb-2">{lesson.track}</div>
+            <h2 className="text-[17px] font-medium text-fg">{lesson.unit}</h2>
+            <p className="mt-1 text-[13px] text-fg-muted">
+              Next: {lesson.title} · lesson {lesson.index} of {lesson.total}
+            </p>
+            <div className="mt-4 flex max-w-sm items-center gap-3">
+              <ProgressBar value={unitProgress} label={lesson.unit} />
+              <span className="numeric shrink-0 font-mono text-[12px] text-fg-muted">
+                {Math.round(unitProgress * 100)}%
+              </span>
             </div>
-            <Link
-              href="/learn"
-              className="rounded bg-accent px-4 py-2 text-sm font-medium text-ink-900 hover:opacity-90"
-            >
+          </div>
+          <Link href="/learn">
+            <Button variant="primary">
               Continue
-            </Link>
-          </div>
-        </Panel>
-      ) : (
-        <Panel className="mt-8">
-          <p className="text-sm text-muted">
-            Backend not reachable. Start it with{" "}
-            <code className="font-mono text-fg">uv run uvicorn app.main:app --reload</code>.
-          </p>
-        </Panel>
-      )}
+              <ArrowRight size={14} aria-hidden />
+            </Button>
+          </Link>
+        </CardBody>
+      </Card>
 
-      <h2 className="mt-10 text-sm font-medium text-muted">Your concepts</h2>
-      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {concepts.slice(0, 6).map((c) => (
-          <div key={c.id} className="rounded-lg border border-line bg-ink-800 p-4">
-            <div className="text-sm text-fg">{c.label}</div>
-            <div className="mt-3">
-              <Bar value={0} />
-            </div>
-            <div className="mt-1 text-xs text-muted">not assessed</div>
-          </div>
-        ))}
-      </div>
-    </div>
+      <section className="mt-9">
+        <SectionTitle
+          actions={
+            <Link
+              href="/concepts"
+              className="flex items-center gap-1 text-[12px] text-fg-muted transition-colors hover:text-fg"
+            >
+              Concept map
+              <ArrowRight size={12} aria-hidden />
+            </Link>
+          }
+        >
+          Your concepts
+        </SectionTitle>
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          {concepts.slice(0, 4).map((c) => (
+            <ConceptCard key={c.id} concept={c} href={`/concepts?concept=${c.id}`} />
+          ))}
+        </div>
+      </section>
+
+      <section className="mt-9">
+        <SectionTitle
+          actions={
+            <Link
+              href="/progress"
+              className="flex items-center gap-1 text-[12px] text-fg-muted transition-colors hover:text-fg"
+            >
+              All sessions
+              <ArrowRight size={12} aria-hidden />
+            </Link>
+          }
+        >
+          Recent sessions
+        </SectionTitle>
+        <Card>
+          <ul>
+            {SESSIONS.slice(0, 3).map((s) => (
+              <li
+                key={s.id}
+                className="flex items-center gap-4 border-b border-line px-4 py-3 last:border-b-0"
+              >
+                <Dot tone={OUTCOME_TONE[s.outcome]} />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[13px] text-fg">{s.title}</div>
+                  <div className="text-[12px] text-fg-subtle">{s.unit}</div>
+                </div>
+                <span className="hidden items-center gap-1.5 text-[12px] text-fg-subtle sm:flex">
+                  <Clock size={12} aria-hidden />
+                  {relativeTime(s.at)}
+                </span>
+                <Badge tone={OUTCOME_TONE[s.outcome]}>{OUTCOME_LABEL[s.outcome]}</Badge>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      </section>
+    </Page>
   );
 }
