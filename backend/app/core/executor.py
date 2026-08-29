@@ -1,15 +1,16 @@
 """Step-by-step execution tracer.
 
-Runs a small Python snippet and records the state after **every executed line**:
+Runs a single Python file and records the state after **every executed line**:
 the current line, the visible local bindings and anything printed so far. That
-trace is what the UI animates and what the diagnostic pipeline diffs against the
-student's prediction.
+trace is what the UI animates and what the chat assistant is given as context
+about "what actually happened" when it answers a debugging question.
 
 ⚠️  Sandboxing note
 ------------------
-This is a *teaching* runner for tiny, trusted lesson snippets, not a security
-boundary. It caps steps/time and swaps in a reduced ``__builtins__``, but it
-does **not** contain untrusted code. Before accepting arbitrary user code in a
+This is a *teaching* runner for small, trusted snippets, not a security
+boundary. It caps steps/time and swaps in a reduced ``__builtins__`` (no
+``import``, ``open``, ``input``, ...), so it also can't yet run code that
+imports other project files. Before accepting arbitrary/untrusted code in a
 deployed setting, move this to a real isolate (subprocess + seccomp, container,
 or a WASM runtime such as Pyodide). Tracked in docs/ARCHITECTURE.md.
 """
@@ -58,17 +59,17 @@ def _visible_locals(frame_locals: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def run_trace(source: str, lesson_id: str = "") -> ExecutionTrace:
+def run_trace(source: str, entry_path: str = "") -> ExecutionTrace:
     """Execute ``source`` and return an :class:`ExecutionTrace`."""
 
     settings = get_settings()
     lines = source.splitlines()
     stdout = io.StringIO()
-    trace = ExecutionTrace(lesson_id=lesson_id)
+    trace = ExecutionTrace(entry_path=entry_path)
     state = {"step": 0, "stop": False}
 
     def tracer(frame, event, arg):  # noqa: ANN001 - CPython trace signature
-        if state["stop"] or frame.f_code.co_filename != "<lesson>":
+        if state["stop"] or frame.f_code.co_filename != "<noesis>":
             return tracer
         if event not in ("line", "return", "exception"):
             return tracer
@@ -93,8 +94,8 @@ def run_trace(source: str, lesson_id: str = "") -> ExecutionTrace:
         )
         return tracer
 
-    compiled = compile(source, "<lesson>", "exec")
-    sandbox_globals: dict[str, Any] = {"__builtins__": _SAFE_BUILTINS, "__name__": "__lesson__"}
+    compiled = compile(source, "<noesis>", "exec")
+    sandbox_globals: dict[str, Any] = {"__builtins__": _SAFE_BUILTINS, "__name__": "__main__"}
 
     def _execute() -> None:
         real_stdout = sys.stdout

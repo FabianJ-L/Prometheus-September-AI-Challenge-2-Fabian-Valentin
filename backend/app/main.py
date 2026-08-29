@@ -19,7 +19,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="NOESIS API",
         version=__version__,
-        summary="Prediction → Execution → Misconception → Socratic teaching loop.",
+        summary="An AI coding assistant that runs/traces your code and teaches through guided questions.",
     )
 
     app.add_middleware(

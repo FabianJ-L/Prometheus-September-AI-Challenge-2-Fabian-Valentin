@@ -1,1 +1,1 @@
-"""Core engine: parsing, execution tracing, prediction diffing, student model."""
+"""Core engine: AST parsing and step-by-step execution tracing."""

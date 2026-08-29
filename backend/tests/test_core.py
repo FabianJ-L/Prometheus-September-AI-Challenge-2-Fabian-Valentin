@@ -1,8 +1,7 @@
+from app.ai.prompts import build_messages, render_context_block
 from app.core.executor import run_trace
 from app.core.parser import summarize
-from app.core.trace import check_prediction
-from app.data.lessons import get_lesson
-from app.models.schemas import Prediction, PredictionKind
+from app.models.schemas import ChatMessage, ChatRole, ExecutionTrace, ProjectFile
 
 
 def test_parser_flags_accumulation_loop():
@@ -10,7 +9,6 @@ def test_parser_flags_accumulation_loop():
     assert s.valid
     assert s.has_loop
     assert s.has_augmented_assignment
-    assert "accumulation" in s.concept_ids
 
 
 def test_parser_reports_syntax_error():
@@ -19,33 +17,37 @@ def test_parser_reports_syntax_error():
     assert s.syntax_error
 
 
-def test_trace_sums_list():
-    lesson = get_lesson("loops-accumulate")
-    trace = run_trace(lesson.starter_code, lesson.id)
+def test_executor_sums_a_list():
+    source = "total = 0\nfor n in [2, 4, 6]:\n    total += n\nprint(total)\n"
+    trace = run_trace(source, entry_path="main.py")
     assert trace.error is None
     assert trace.final_locals["total"] == 12
     assert trace.stdout.strip() == "12"
     assert len(trace.steps) > 3
 
 
-def test_prediction_check_detects_divergence():
-    lesson = get_lesson("loops-accumulate")
-    trace = run_trace(lesson.starter_code, lesson.id)
-    wrong = Prediction(lesson_id=lesson.id, kind=PredictionKind.value, answer=6)
-    check = check_prediction(wrong, trace, target="total")
-    assert check.matches is False
-    assert check.actual == 12
-    assert check.divergence_step is not None
-
-
-def test_prediction_check_accepts_correct_string_answer():
-    lesson = get_lesson("loops-accumulate")
-    trace = run_trace(lesson.starter_code, lesson.id)
-    right = Prediction(lesson_id=lesson.id, kind=PredictionKind.value, answer="12")
-    check = check_prediction(right, trace, target="total")
-    assert check.matches is True
-
-
 def test_executor_times_out_on_infinite_loop():
     trace = run_trace("while True:\n    pass\n")
     assert trace.truncated is True
+
+
+def test_render_context_block_includes_active_file_and_error():
+    files = [ProjectFile(path="main.py", content="print(1/0)")]
+    trace = ExecutionTrace(entry_path="main.py", error="ZeroDivisionError: division by zero")
+    block = render_context_block(files, "main.py", trace)
+    assert "main.py" in block
+    assert "print(1/0)" in block
+    assert "ZeroDivisionError" in block
+
+
+def test_build_messages_appends_context_to_new_turn():
+    history = [
+        ChatMessage(role=ChatRole.user, content="hi"),
+        ChatMessage(role=ChatRole.assistant, content="hello"),
+    ]
+    messages = build_messages(history, "why is this wrong?", "## context")
+    assert messages[0] == {"role": "user", "content": "hi"}
+    assert messages[1] == {"role": "assistant", "content": "hello"}
+    assert messages[-1]["role"] == "user"
+    assert "## context" in messages[-1]["content"]
+    assert "why is this wrong?" in messages[-1]["content"]

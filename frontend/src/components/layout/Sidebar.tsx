@@ -2,25 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  CircleHelp,
-  GitBranch,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Settings,
-  SquareTerminal,
-  Target,
-  TrendingUp,
-} from "lucide-react";
+import { CircleHelp, PanelLeftClose, PanelLeftOpen, Settings, SquareTerminal } from "lucide-react";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 
-const PRIMARY = [
-  { href: "/", label: "Learn", icon: SquareTerminal },
-  { href: "/practice", label: "Practice", icon: Target },
-  { href: "/progress", label: "Progress", icon: TrendingUp },
-  { href: "/concepts", label: "Concepts", icon: GitBranch },
-] as const;
+const PRIMARY = [{ href: "/", label: "Workspace", icon: SquareTerminal }] as const;
 
 const SECONDARY = [
   { href: "/settings", label: "Settings", icon: Settings },
@@ -115,7 +101,7 @@ function NavItem({
 }: {
   href: string;
   label: string;
-  icon: typeof Target;
+  icon: typeof SquareTerminal;
   active: boolean;
   collapsed: boolean;
 }) {

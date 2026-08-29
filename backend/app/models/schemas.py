@@ -18,73 +18,21 @@ def _now() -> datetime:
 
 
 # ---------------------------------------------------------------------------
-# Concepts
+# Project files (virtual file system for v1)
 # ---------------------------------------------------------------------------
 
 
-class MasteryLevel(StrEnum):
-    mastered = "mastered"
-    developing = "developing"
-    uncertain = "uncertain"
-    not_assessed = "not_assessed"
+class ProjectFile(BaseModel):
+    """One file in the (currently virtual, browser-held) project."""
 
-
-class ConceptNode(BaseModel):
-    """A node in the concept map (see app/data/concepts.py)."""
-
-    id: str
-    label: str
-    summary: str = ""
-    prerequisites: list[str] = Field(default_factory=list)
-
-
-class ConceptState(BaseModel):
-    """Per-student mastery estimate for one concept."""
-
-    concept_id: str
-    score: float = 0.0  # 0..1
-    level: MasteryLevel = MasteryLevel.not_assessed
-    evidence_count: int = 0
-    last_updated: datetime = Field(default_factory=_now)
+    path: str
+    content: str = ""
+    language: str = "python"  # only "python" is executed/traced today
 
 
 # ---------------------------------------------------------------------------
-# Lessons
+# Execution
 # ---------------------------------------------------------------------------
-
-
-class PredictionKind(StrEnum):
-    value = "value"  # predict a final value (e.g. `total`)
-    output = "output"  # predict stdout
-    choice = "choice"  # multiple choice
-
-
-class Lesson(BaseModel):
-    id: str
-    track: str  # e.g. "Python Fundamentals"
-    unit: str  # e.g. "Loops → Iteration"
-    title: str
-    order: int = 0
-    concepts: list[str] = Field(default_factory=list)
-    starter_code: str
-    prediction_kind: PredictionKind = PredictionKind.value
-    prediction_prompt: str = "Before you run the code, predict what happens."
-    prediction_target: str | None = None  # variable name for `value` kind
-    choices: list[str] = Field(default_factory=list)  # for `choice` kind
-    expected_answer: Any = None  # ground truth, filled after execution if None
-
-
-# ---------------------------------------------------------------------------
-# Prediction / execution
-# ---------------------------------------------------------------------------
-
-
-class Prediction(BaseModel):
-    lesson_id: str
-    kind: PredictionKind
-    answer: Any
-    rationale: str | None = None
-    submitted_at: datetime = Field(default_factory=_now)
 
 
 class TraceStep(BaseModel):
@@ -99,7 +47,7 @@ class TraceStep(BaseModel):
 
 
 class ExecutionTrace(BaseModel):
-    lesson_id: str
+    entry_path: str = ""
     steps: list[TraceStep] = Field(default_factory=list)
     final_locals: dict[str, Any] = Field(default_factory=dict)
     stdout: str = ""
@@ -107,73 +55,35 @@ class ExecutionTrace(BaseModel):
     truncated: bool = False
 
 
-class PredictionCheck(BaseModel):
-    """Result of comparing a prediction against the real trace."""
-
-    matches: bool
-    predicted: Any
-    actual: Any
-    # First step index where the student's model most likely diverged.
-    divergence_step: int | None = None
-    note: str = ""
+class RunRequest(BaseModel):
+    files: list[ProjectFile]
+    entry_path: str
 
 
 # ---------------------------------------------------------------------------
-# Diagnosis / teaching
+# Chat (Socratic coding assistant)
 # ---------------------------------------------------------------------------
 
 
-class Misconception(BaseModel):
-    id: str  # e.g. "assignment_vs_accumulation"
-    label: str
-    description: str
-    related_concepts: list[str] = Field(default_factory=list)
+class ChatRole(StrEnum):
+    user = "user"
+    assistant = "assistant"
 
 
-class SocraticTurn(BaseModel):
-    """One AI move in the guided-questioning loop."""
-
-    role: str = "teacher"  # "teacher" | "student"
-    intent: str = "question"  # "question" | "hint" | "prompt" | "confirm"
-    text: str
-    choices: list[str] = Field(default_factory=list)
-    reveals_solution: bool = False
+class ChatMessage(BaseModel):
+    role: ChatRole
+    content: str
     created_at: datetime = Field(default_factory=_now)
 
 
-class DiagnosticResult(BaseModel):
-    lesson_id: str
-    prediction_check: PredictionCheck
-    misconception: Misconception | None = None
-    confidence: float = 0.0
-    concept_deltas: dict[str, float] = Field(default_factory=dict)
-    first_turn: SocraticTurn | None = None
+class ChatRequest(BaseModel):
+    message: str
+    history: list[ChatMessage] = Field(default_factory=list)
+    files: list[ProjectFile] = Field(default_factory=list)
+    active_path: str | None = None
+    last_trace: ExecutionTrace | None = None
+
+
+class ChatResponse(BaseModel):
+    message: ChatMessage
     mock: bool = False
-
-
-# ---------------------------------------------------------------------------
-# Session
-# ---------------------------------------------------------------------------
-
-
-class SessionPhase(StrEnum):
-    predict = "predict"
-    execute = "execute"
-    compare = "compare"
-    diagnose = "diagnose"
-    understand = "understand"
-    retry = "retry"
-    done = "done"
-
-
-class SessionState(BaseModel):
-    id: str
-    lesson_id: str
-    phase: SessionPhase = SessionPhase.predict
-    started_at: datetime = Field(default_factory=_now)
-    prediction: Prediction | None = None
-    trace: ExecutionTrace | None = None
-    diagnostic: DiagnosticResult | None = None
-    turns: list[SocraticTurn] = Field(default_factory=list)
-    concept_states: dict[str, ConceptState] = Field(default_factory=dict)
-    prediction_accuracy: float | None = None

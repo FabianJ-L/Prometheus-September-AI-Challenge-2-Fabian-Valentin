@@ -1,9 +1,9 @@
 """Source → structural summary.
 
-We parse the student's snippet into an AST and pull out the features the
-diagnostic pipeline cares about: which concepts the code touches, the names it
-binds, whether it loops, mutates, defines functions, recurses, etc. This is the
-cheap, deterministic first pass — the LLM never sees raw code without it.
+We parse the user's code into an AST and pull out the features the chat
+assistant cares about: the names it binds, whether it loops, mutates, defines
+functions, recurses, etc. This is the cheap, deterministic first pass that
+feeds the AI's context alongside the raw source and the execution trace.
 """
 
 from __future__ import annotations
@@ -24,7 +24,6 @@ class CodeSummary:
     has_augmented_assignment: bool = False  # `total += x`
     has_recursion: bool = False
     prints: bool = False
-    concept_ids: list[str] = field(default_factory=list)
 
     def as_dict(self) -> dict:
         return {
@@ -38,7 +37,6 @@ class CodeSummary:
             "has_augmented_assignment": self.has_augmented_assignment,
             "has_recursion": self.has_recursion,
             "prints": self.prints,
-            "concept_ids": self.concept_ids,
         }
 
 
@@ -74,7 +72,6 @@ def summarize(source: str) -> CodeSummary:
                     summary.prints = True
 
     summary.has_recursion = any(name in func_names for name in summary.called_names)
-    summary.concept_ids = _infer_concepts(summary)
     _dedupe(summary)
     return summary
 
@@ -95,28 +92,8 @@ def _call_name(node: ast.Call) -> str | None:
     return None
 
 
-def _infer_concepts(s: CodeSummary) -> list[str]:
-    concepts: list[str] = []
-    if s.assigned_names:
-        concepts.append("variables")
-        concepts.append("assignment")
-    if s.has_augmented_assignment:
-        concepts.append("accumulation")
-    if s.has_loop:
-        concepts.append("loops")
-        concepts.append("iteration")
-    if s.has_conditional:
-        concepts.append("conditionals")
-    if s.defined_functions:
-        concepts.append("functions")
-        concepts.append("scope")
-    if s.has_recursion:
-        concepts.append("recursion")
-    return concepts
-
-
 def _dedupe(s: CodeSummary) -> None:
-    for attr in ("assigned_names", "called_names", "defined_functions", "concept_ids"):
+    for attr in ("assigned_names", "called_names", "defined_functions"):
         seen: dict[str, None] = {}
         for item in getattr(s, attr):
             seen.setdefault(item, None)

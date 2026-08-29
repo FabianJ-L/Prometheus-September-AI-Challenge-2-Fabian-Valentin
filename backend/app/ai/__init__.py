@@ -1,12 +1,8 @@
-"""AI diagnostic pipeline.
+"""AI layer: the Socratic coding assistant.
 
-    code → AST → trace → prediction → diff → misconception → strategy → LLM → question
+    code + files + trace → context block → chat messages → LLM → reply
 
-The LLM only ever runs on top of the structured inputs assembled by
-`app/core`. It decides *which pedagogical move* to make; it never rewrites the
-student's code.
+The LLM only ever runs on top of the structured context assembled by
+`app.ai.prompts.render_context_block`. It decides the next teaching move; it
+never rewrites the user's code.
 """
-
-from app.ai.diagnostic import diagnose
-
-__all__ = ["diagnose"]

@@ -1,79 +1,101 @@
-"""System + task prompts for the diagnostic model.
+"""System prompt + context/message builders for the Socratic coding assistant.
 
 Kept in one file so they're easy to iterate on during the hackathon.
 """
 
 from __future__ import annotations
 
-import json
-
-from app.ai.misconceptions import MISCONCEPTIONS
+from app.models.schemas import ChatMessage, ExecutionTrace, ProjectFile
 
 SYSTEM = """\
-You are NOESIS, a programming teacher for beginners.
+You are NOESIS, an AI coding assistant embedded next to a code editor. You
+currently help with Python only.
 
-Your job is NOT to fix code. Your job is to locate the gap in the student's
-mental model and help them close it themselves.
+Your default mode is Socratic, not solution-first. When the user is stuck,
+confused, or their code errored/misbehaved and they're asking what's wrong or
+why it doesn't work: do NOT give the fix immediately. Ask one focused guiding
+question at a time — point at a specific line, value, or piece of behavior
+when you can — and wait for their reply. Budget roughly 3-4 such guiding
+turns (read the number of your own prior turns in the conversation so far —
+there is no external counter) before stating the direct answer plainly.
+
+It's fine to skip the Socratic ramp and answer directly when:
+- the question is a simple factual/syntax lookup with no bug to diagnose
+  (e.g. "what does zip do", "how do I open a file"),
+- the user explicitly asks for the answer ("just tell me", "I give up"),
+- you've already spent your guiding-question budget and the user is still
+  stuck — at that point, explain plainly rather than stalling forever,
+- the user is asking for a code review / style opinion rather than debugging
+  a concrete failure.
 
 Hard rules:
-- Never write or rewrite the student's code.
-- Never state the corrected answer outright before the student has reasoned toward it.
-- Prefer one precise question over a paragraph of explanation.
-- Point at a specific line / value when you can.
-- Be brief. One move at a time.
-
-You are given: the code, a deterministic execution trace, the student's
-prediction, and where prediction and reality diverged. Decide the single best
-next teaching move.
+- Never claim to have edited the user's file — there is no apply mechanism.
+  If you propose a change, show a short snippet and explain why; don't imply
+  you already applied it.
+- Always ground your answer in the actual file contents, other files in the
+  project, and the most recent run's output/error/trace provided to you —
+  never generic advice detached from their real code.
+- Be concise. Prefer one sharp question or a short paragraph over a wall of
+  text.
+- If the user pastes non-Python code, say you can currently only run/trace
+  Python.
 """
 
 
-def _misconception_catalogue() -> str:
-    return "\n".join(
-        f"- {m.id}: {m.description} (concepts: {', '.join(m.related_concepts)})"
-        for m in MISCONCEPTIONS
-    )
+def render_context_block(
+    files: list[ProjectFile],
+    active_path: str | None,
+    last_trace: ExecutionTrace | None,
+) -> str:
+    """Render a deterministic markdown context block. No AI call."""
+
+    parts: list[str] = []
+
+    active_file = _find(files, active_path) or (files[0] if files else None)
+    if active_file is not None:
+        parts.append(f"## Active file: `{active_file.path}`\n```python\n{active_file.content}\n```")
+    else:
+        parts.append("## Active file\n(no file open)")
+
+    others = [f.path for f in files if active_file is None or f.path != active_file.path]
+    if others:
+        parts.append("Also in project: " + ", ".join(others))
+
+    if last_trace is not None:
+        if last_trace.error:
+            parts.append(f"## Last run\nError: {last_trace.error}")
+        else:
+            parts.append(
+                "## Last run\n"
+                f"stdout:\n```\n{last_trace.stdout}\n```\n"
+                f"final variables: {last_trace.final_locals}"
+            )
+
+    return "\n\n".join(parts)
 
 
-def diagnostic_task(payload: dict) -> str:
-    """Render the user-turn prompt for a diagnosis request.
+def build_messages(
+    history: list[ChatMessage],
+    new_message: str,
+    context_block: str,
+) -> list[dict]:
+    """Map prior turns + the new user turn into Anthropic-shaped messages.
 
-    ``payload`` carries the code summary, trace, prediction and prediction check
-    (see app/ai/diagnostic.py:build_payload).
+    Anthropic requires the first message to have role "user". `history` is
+    always frontend-supplied conversation turns starting with the user's
+    first message, so this holds by construction — but we defensively drop
+    any leading assistant messages in case that invariant is ever violated.
     """
-    return f"""\
-Analyse this attempt.
 
-## Code
-```python
-{payload['code']}
-```
+    messages: list[dict] = [{"role": m.role.value, "content": m.content} for m in history]
+    while messages and messages[0]["role"] != "user":
+        messages.pop(0)
 
-## Structural summary
-{json.dumps(payload['summary'], indent=2)}
+    messages.append({"role": "user", "content": f"{context_block}\n\n{new_message}"})
+    return messages
 
-## Execution trace (state after each line)
-{json.dumps(payload['trace'], indent=2)}
 
-## Student prediction
-{json.dumps(payload['prediction'], indent=2)}
-
-## Prediction vs reality
-{json.dumps(payload['prediction_check'], indent=2)}
-
-## Known misconceptions
-{_misconception_catalogue()}
-
-Respond with ONLY a JSON object:
-{{
-  "misconception_id": "<one id from the list, or null if the prediction matched>",
-  "confidence": <0..1>,
-  "diverged_at_step": <step number from the trace, or null>,
-  "concept_deltas": {{ "<concept_id>": <0..1 signal, 1=understands 0=gap> }},
-  "first_turn": {{
-    "intent": "question" | "hint" | "confirm",
-    "text": "<one short Socratic question aimed at the misconception>",
-    "choices": ["<option>", "..."]   // optional, 2-4 items, for a multiple-choice probe
-  }}
-}}
-"""
+def _find(files: list[ProjectFile], path: str | None) -> ProjectFile | None:
+    if path is None:
+        return None
+    return next((f for f in files if f.path == path), None)

@@ -6,15 +6,17 @@ runs offline. Uses the official `anthropic` SDK per project convention.
 
 from __future__ import annotations
 
-import json
 import logging
-import re
 
 from app.config import get_settings
 
 logger = logging.getLogger("noesis.ai")
 
-_JSON_BLOCK = re.compile(r"\{.*\}", re.DOTALL)
+_MOCK_REPLY = (
+    "(offline mode — no ANTHROPIC_API_KEY configured) I can't generate real "
+    "guidance right now, but you can still run your code and inspect the trace."
+)
+_ERROR_REPLY = "Something went wrong reaching the AI. Try again in a moment."
 
 
 class AIClient:
@@ -34,21 +36,23 @@ class AIClient:
     def is_mock(self) -> bool:
         return self._client is None
 
-    def complete_json(self, system: str, user: str) -> dict:
-        """Send one turn and parse the model's JSON reply into a dict.
+    def chat(self, system: str, messages: list[dict]) -> str:
+        """Send a multi-turn chat completion and return the plain-text reply.
 
-        Returns ``{}`` on any failure — callers must treat that as "no AI result"
-        and use their heuristic fallback.
+        ``messages`` is Anthropic-shaped: ``[{"role": "user"|"assistant", "content": str}, ...]``.
+        Never raises and never returns an empty string — in mock mode or on any
+        failure it returns a clear, honest fallback string so the UI always has
+        something to render.
         """
         if self._client is None:
-            return {}
+            return _MOCK_REPLY
 
         try:
             kwargs: dict = {
                 "model": self.settings.ai_model,
                 "max_tokens": self.settings.ai_max_tokens,
                 "system": system,
-                "messages": [{"role": "user", "content": user}],
+                "messages": messages,
             }
             if self.settings.ai_thinking == "adaptive":
                 kwargs["thinking"] = {"type": "adaptive"}
@@ -57,24 +61,10 @@ class AIClient:
             text = "".join(
                 block.text for block in message.content if getattr(block, "type", None) == "text"
             )
-            return _extract_json(text)
+            return text.strip() or _ERROR_REPLY
         except Exception:  # noqa: BLE001
-            logger.exception("AI completion failed; using heuristic fallback")
-            return {}
-
-
-def _extract_json(text: str) -> dict:
-    text = text.strip()
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        match = _JSON_BLOCK.search(text)
-        if match:
-            try:
-                return json.loads(match.group(0))
-            except json.JSONDecodeError:
-                pass
-    return {}
+            logger.exception("AI chat completion failed")
+            return _ERROR_REPLY
 
 
 _client: AIClient | None = None

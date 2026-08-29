@@ -1,29 +1,23 @@
 """Shared Pydantic models."""
 
 from app.models.schemas import (
-    ConceptNode,
-    ConceptState,
-    DiagnosticResult,
+    ChatMessage,
+    ChatRequest,
+    ChatResponse,
+    ChatRole,
     ExecutionTrace,
-    Lesson,
-    Misconception,
-    Prediction,
-    PredictionCheck,
-    SessionState,
-    SocraticTurn,
+    ProjectFile,
+    RunRequest,
     TraceStep,
 )
 
 __all__ = [
-    "ConceptNode",
-    "ConceptState",
-    "DiagnosticResult",
+    "ChatMessage",
+    "ChatRequest",
+    "ChatResponse",
+    "ChatRole",
     "ExecutionTrace",
-    "Lesson",
-    "Misconception",
-    "Prediction",
-    "PredictionCheck",
-    "SessionState",
-    "SocraticTurn",
+    "ProjectFile",
+    "RunRequest",
     "TraceStep",
 ]

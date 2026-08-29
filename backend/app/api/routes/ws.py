@@ -1,16 +1,21 @@
-"""WebSocket transport for the learning loop.
+"""WebSocket transport for the workspace: run/trace + chat.
 
 Message envelope (both directions): ``{"type": "...", "payload": {...}}``
 
 Client → server:
-  start        {"lesson_id": "loops-accumulate"}
-  prediction   {"answer": 12, "rationale": "..."}
-  answer       {"text": "because = replaces the value"}
+  run_code       {"files": [<ProjectFile>...], "entry_path": "main.py"}
+  chat_message   {"message": "...", "history": [<ChatMessage>...],
+                  "files": [<ProjectFile>...], "active_path": "main.py",
+                  "last_trace": <ExecutionTrace> | null}
 
 Server → client:
-  session      {<SessionState>}          full state after every transition
-  step         {<TraceStep>}             streamed one-by-one during EXECUTE
-  error        {"message": "..."}
+  trace_step         {<TraceStep>}            streamed one-by-one during run_code
+  run_result          {<ExecutionTrace>}       final trace after run_code completes
+  assistant_message   {<ChatMessage>}          full (non-streamed) reply after chat_message
+  error                {"message": "..."}
+
+Stateless: every message carries the full context it needs (files, chat
+history). There is no server-side session.
 """
 
 from __future__ import annotations
@@ -18,64 +23,43 @@ from __future__ import annotations
 import asyncio
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from pydantic import ValidationError
 
-from app import loop, store
+from app import workspace
+from app.models.schemas import ChatRequest, ProjectFile
 
 router = APIRouter()
 
 _STEP_DELAY_SECONDS = 0.35  # pacing for the UI animation
 
 
-@router.websocket("/ws/session")
-async def session_socket(ws: WebSocket) -> None:
+@router.websocket("/ws/workspace")
+async def workspace_socket(ws: WebSocket) -> None:
     await ws.accept()
-    session_id: str | None = None
     try:
         while True:
             msg = await ws.receive_json()
             mtype = msg.get("type")
             payload = msg.get("payload") or {}
 
-            if mtype == "start":
-                session = await asyncio.to_thread(loop.start_session, payload["lesson_id"])
-                session_id = session.id
-                await ws.send_json({"type": "session", "payload": session.model_dump(mode="json")})
+            if mtype == "run_code":
+                files = [ProjectFile(**f) for f in payload["files"]]
+                trace = await asyncio.to_thread(workspace.handle_run, files, payload["entry_path"])
+                for step in trace.steps:
+                    await ws.send_json({"type": "trace_step", "payload": step.model_dump(mode="json")})
+                    await asyncio.sleep(_STEP_DELAY_SECONDS)
+                await ws.send_json({"type": "run_result", "payload": trace.model_dump(mode="json")})
 
-            elif mtype == "prediction":
-                _need(session_id)
-                session = await asyncio.to_thread(
-                    loop.submit_prediction, session_id, payload.get("answer"), payload.get("rationale")
-                )
-                if session.trace:
-                    for step in session.trace.steps:
-                        await ws.send_json({"type": "step", "payload": step.model_dump(mode="json")})
-                        await asyncio.sleep(_STEP_DELAY_SECONDS)
-                await ws.send_json({"type": "session", "payload": session.model_dump(mode="json")})
-
-            elif mtype == "answer":
-                _need(session_id)
-                session = await asyncio.to_thread(loop.submit_answer, session_id, payload.get("text", ""))
-                await ws.send_json({"type": "session", "payload": session.model_dump(mode="json")})
-
-            elif mtype == "resync":
-                _need(session_id)
-                session = store.get_session(session_id)
-                await ws.send_json({"type": "session", "payload": session.model_dump(mode="json")})
+            elif mtype == "chat_message":
+                req = ChatRequest(**payload)
+                reply = await asyncio.to_thread(workspace.handle_chat, req)
+                await ws.send_json({"type": "assistant_message", "payload": reply.model_dump(mode="json")})
 
             else:
                 await ws.send_json({"type": "error", "payload": {"message": f"unknown type '{mtype}'"}})
 
     except WebSocketDisconnect:
         return
-    except (loop.LoopError, KeyError, _NeedSession) as exc:
+    except (workspace.WorkspaceError, KeyError, ValidationError) as exc:
         await ws.send_json({"type": "error", "payload": {"message": str(exc) or "bad request"}})
         await ws.close()
-
-
-class _NeedSession(RuntimeError):
-    pass
-
-
-def _need(session_id: str | None) -> None:
-    if not session_id:
-        raise _NeedSession("send a 'start' message first")

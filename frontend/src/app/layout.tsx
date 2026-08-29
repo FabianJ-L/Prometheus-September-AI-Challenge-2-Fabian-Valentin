@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Sidebar } from "@/components/layout/Sidebar";
-import { MentalModelProvider } from "@/lib/mental-model";
 import { SettingsProvider, THEME_BOOTSTRAP } from "@/lib/settings";
+import { WorkspaceProvider } from "@/lib/workspace";
 
 const sans = Inter({
   subsets: ["latin"],
@@ -18,9 +18,9 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "NOESIS — See where your thinking breaks",
+  title: "NOESIS — Your AI coding assistant",
   description:
-    "An AI programming teacher that identifies gaps in your mental model and teaches you through prediction, execution and guided questions.",
+    "Runs and traces your Python step by step, and when you're stuck, works the problem out with you instead of just handing you the fix.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -40,12 +40,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="font-sans antialiased">
         <SettingsProvider>
-          <MentalModelProvider>
+          <WorkspaceProvider>
             <div className="flex min-h-screen">
               <Sidebar />
               <main className="min-w-0 flex-1">{children}</main>
             </div>
-          </MentalModelProvider>
+          </WorkspaceProvider>
         </SettingsProvider>
       </body>
     </html>

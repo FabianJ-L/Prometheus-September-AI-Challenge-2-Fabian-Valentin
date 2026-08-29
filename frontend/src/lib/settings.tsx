@@ -11,73 +11,27 @@ import {
 } from "react";
 
 export type Theme = "dark" | "light" | "system";
-export type TeachingStyle = "socratic" | "guided" | "minimal";
-export type HintLevel = "concept" | "strategy" | "steps";
 
 export interface Settings {
   // General
   language: string;
-  startPage: "continue" | "dashboard" | "practice";
   confirmBeforeReset: boolean;
   // Appearance
   theme: Theme;
   codeFontSize: number;
   lineNumbers: boolean;
   animations: boolean;
-  // Learning
-  teachingStyle: TeachingStyle;
-  difficultyAdaptation: boolean;
-  predictionMode: "always" | "relevant";
-  showMisconceptions: "immediately" | "end";
-  // AI teacher
-  neverGiveSolution: boolean;
-  askBeforeExplaining: boolean;
-  allowHints: boolean;
-  maxHintLevel: HintLevel;
-  // Code
-  codeLanguage: "python";
-  sandboxMode: boolean;
-  autoRunAfterPrediction: boolean;
-  showMemory: boolean;
-  showCallStack: boolean;
-  showExecutionTimeline: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   language: "English",
-  startPage: "continue",
   confirmBeforeReset: true,
 
   theme: "dark",
   codeFontSize: 13,
   lineNumbers: true,
   animations: true,
-
-  teachingStyle: "guided",
-  difficultyAdaptation: true,
-  predictionMode: "always",
-  showMisconceptions: "immediately",
-
-  neverGiveSolution: true,
-  askBeforeExplaining: true,
-  allowHints: true,
-  maxHintLevel: "strategy",
-
-  codeLanguage: "python",
-  sandboxMode: true,
-  autoRunAfterPrediction: false,
-  showMemory: true,
-  showCallStack: false,
-  showExecutionTimeline: true,
 };
-
-export const HINT_LEVELS: HintLevel[] = ["concept", "strategy", "steps"];
-
-/** How many progressive hints the AI-teacher policy allows. */
-export function maxHints(settings: Settings): number {
-  if (!settings.allowHints) return 0;
-  return HINT_LEVELS.indexOf(settings.maxHintLevel) + 1;
-}
 
 const STORAGE_KEY = "noesis.settings.v1";
 

@@ -4,7 +4,7 @@ Lesson: **`loops-accumulate`** ("Summing a list"). One reel, no feature tour.
 
 ```python
 numbers = [2, 4, 6]
-
+  
 total = 0
 
 for number in numbers:
