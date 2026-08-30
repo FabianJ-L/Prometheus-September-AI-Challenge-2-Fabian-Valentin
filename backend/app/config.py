@@ -23,12 +23,6 @@ class Settings(BaseSettings):
     # Comma-separated in the env; use `cors_origins` for the parsed list.
     cors_origins_raw: str = Field(default="http://localhost:3000", alias="NOESIS_CORS_ORIGINS")
 
-    # --- AI --------------------------------------------------------------
-    anthropic_api_key: str | None = Field(default=None, alias="ANTHROPIC_API_KEY")
-    ai_model: str = Field(default="claude-opus-5", alias="NOESIS_AI_MODEL")
-    ai_thinking: str = Field(default="adaptive", alias="NOESIS_AI_THINKING")
-    ai_max_tokens: int = Field(default=4096, alias="NOESIS_AI_MAX_TOKENS")
-
     # --- sandboxed executor ---------------------------------------------
     exec_timeout_seconds: float = Field(default=5.0, alias="NOESIS_EXEC_TIMEOUT_SECONDS")
     exec_max_steps: int = Field(default=2000, alias="NOESIS_EXEC_MAX_STEPS")
@@ -36,11 +30,6 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> list[str]:
         return [o.strip() for o in self.cors_origins_raw.split(",") if o.strip()]
-
-    @property
-    def ai_enabled(self) -> bool:
-        """True when a real Anthropic key is configured; otherwise mock mode."""
-        return bool(self.anthropic_api_key)
 
 
 @lru_cache

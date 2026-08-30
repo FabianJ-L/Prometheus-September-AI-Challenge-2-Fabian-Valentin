@@ -1,7 +1,7 @@
 [project]
 name = "noesis-backend"
 version = "0.1.0"
-description = "NOESIS backend — AST parser, step executor, student model, AI diagnostic pipeline"
+description = "NOESIS execution sandbox — AST parser + sandboxed step tracer for Python code"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -10,7 +10,6 @@ dependencies = [
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
     "websockets>=13",
-    "anthropic>=0.40",
     "python-dotenv>=1.0",
 ]
 

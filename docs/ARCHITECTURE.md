@@ -13,12 +13,24 @@ questions — never by rewriting their code.
 CODE → PREDICT → EXECUTE → COMPARE → UNDERSTAND → RETRY
 ```
 
+> **Current implementation note:** the diagram and pipeline below describe the
+> full aspirational design (lessons, prediction diffing, a student model,
+> misconception classifier). What actually exists today is a smaller slice:
+> run/trace + a Socratic chat assistant — **and the chat/AI layer
+> (`ai.client`, `ai.prompts` below) now lives entirely in the frontend**
+> (`frontend/src/lib/ai/`, `frontend/src/app/api/chat/route.ts`), not in
+> FastAPI. FastAPI only runs/traces Python code (`core.parser`,
+> `core.executor`) — it has no AI dependency at all. Treat everything else
+> in this file as the target design, not the current code.
+
 ## Runtime
 
 ```
         Next.js (App Router)  ──HTTP──▶  FastAPI  /api
               │                            │
               └──────WebSocket────────────▶│  /api/ws/session   (step streaming)
+              │                            │
+              └──HTTP (/api/chat)──▶ ai.client (Anthropic)                [frontend, not FastAPI]
                                            │
               ┌────────────────────────────┼────────────────────────────┐
               ▼                            ▼                            ▼

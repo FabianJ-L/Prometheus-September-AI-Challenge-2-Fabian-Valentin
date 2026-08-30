@@ -12,9 +12,11 @@ type Envelope = { type: string; payload: unknown };
 
 /**
  * Thin wrapper around a raw browser WebSocket, mirroring the request/response
- * shape of `backend/app/api/routes/ws.py`. Dispatches incoming events
- * straight into the workspace reducer. v1 keeps reconnect simple: a single
- * retry after a short delay, no exponential backoff.
+ * shape of `backend/app/api/routes/ws.py`, plus a `fetch` call for chat
+ * (handled entirely within this Next.js app — see `app/api/chat/route.ts`).
+ * Dispatches incoming events straight into the workspace reducer. v1 keeps
+ * reconnect simple: a single retry after a short delay, no exponential
+ * backoff.
  */
 export class WorkspaceService {
   private socket: WebSocket | null = null;
@@ -60,10 +62,6 @@ export class WorkspaceService {
       case "run_result":
         this.dispatch({ type: "SET_RUN_RESULT", trace: envelope.payload as ExecutionTrace });
         break;
-      case "assistant_message":
-        this.dispatch({ type: "APPEND_CHAT_MESSAGE", message: envelope.payload as ChatMessage });
-        this.dispatch({ type: "SET_ASSISTANT_THINKING", thinking: false });
-        break;
       case "error": {
         const message = (envelope.payload as { message?: string })?.message ?? "Something went wrong.";
         this.dispatch({ type: "SET_CONNECTION_ERROR", message });
@@ -91,16 +89,29 @@ export class WorkspaceService {
     const userTurn: ChatMessage = { role: "user", content: message, createdAt: new Date().toISOString() };
     this.dispatch?.({ type: "APPEND_CHAT_MESSAGE", message: userTurn });
     this.dispatch?.({ type: "SET_ASSISTANT_THINKING", thinking: true });
-    this.send({
-      type: "chat_message",
-      payload: {
+
+    fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
         message,
         history: state.chatHistory,
         files: state.files,
-        active_path: state.activePath,
-        last_trace: state.lastTrace,
-      },
-    });
+        activePath: state.activePath,
+        lastTrace: state.lastTrace,
+      }),
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`chat request failed (${res.status})`);
+        const reply = (await res.json()) as ChatMessage;
+        this.dispatch?.({ type: "APPEND_CHAT_MESSAGE", message: reply });
+      })
+      .catch(() => {
+        this.dispatch?.({ type: "SET_CONNECTION_ERROR", message: "Couldn't reach the AI assistant." });
+      })
+      .finally(() => {
+        this.dispatch?.({ type: "SET_ASSISTANT_THINKING", thinking: false });
+      });
   }
 }
 

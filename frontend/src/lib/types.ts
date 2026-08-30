@@ -1,8 +1,10 @@
 /**
  * Domain types for the NOESIS workspace.
  *
- * Mirrors `backend/app/models/schemas.py` field-for-field — change both
- * together.
+ * `ProjectFile`, `TraceStep` and `ExecutionTrace` mirror
+ * `backend/app/models/schemas.py` field-for-field — change both together.
+ * `ChatMessage`/`ChatRequest` are TS-only: chat/AI runs entirely in this app
+ * (see `lib/ai/`, `app/api/chat/route.ts`) and never touches the backend.
  */
 
 export type ChatRole = "user" | "assistant";
@@ -17,6 +19,15 @@ export interface ChatMessage {
   role: ChatRole;
   content: string;
   createdAt: string; // ISO
+}
+
+/** Body of `POST /api/chat`. */
+export interface ChatRequest {
+  message: string;
+  history: ChatMessage[];
+  files: ProjectFile[];
+  activePath: string | null;
+  lastTrace: ExecutionTrace | null;
 }
 
 export type TraceEvent = "line" | "call" | "return" | "exception";

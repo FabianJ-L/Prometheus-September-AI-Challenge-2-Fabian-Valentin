@@ -35,5 +35,5 @@ make dev             # backend :8000 + frontend :3000
 # open http://localhost:3000/learn
 ```
 
-Runs fully offline (mock AI). With `ANTHROPIC_API_KEY` in `backend/.env` the
-misconception + question come from the model instead of the heuristic.
+Runs fully offline (mock AI). With `ANTHROPIC_API_KEY` in `frontend/.env.local`
+the misconception + question come from the model instead of the heuristic.
