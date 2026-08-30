@@ -1,21 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Pause, Play, SkipBack, SkipForward, StepBack, StepForward } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Boxes, Pause, Play, SkipBack, SkipForward, StepBack, StepForward, Table2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { Tabs } from "@/components/ui/Tabs";
+import { MemoryDiagram } from "@/components/workspace/MemoryDiagram";
 import { cn } from "@/lib/utils";
+import { formatValue, hasChanged } from "@/lib/values";
 import { useWorkspace } from "@/lib/workspace";
 import type { ExecutionTrace } from "@/lib/types";
 
 const PLAY_INTERVAL_MS = 700;
 
-function formatValue(value: unknown): string {
-  if (typeof value === "string") return `"${value}"`;
-  if (value === null || value === undefined) return "None";
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
-}
+type Inspector = "table" | "memory";
 
 /**
  * Step-by-step view of a finished run: the current line, the variables that
@@ -23,10 +21,15 @@ function formatValue(value: unknown): string {
  * step), and the output printed so far. Stepping is user-paced by design —
  * play/pause exists, but reading one line at a time and seeing what just
  * changed is the actual point of this view.
+ *
+ * Two ways to read the state: a table for "what is each name worth", and a
+ * memory diagram for "what does each name point at" — the second is the only
+ * one that can show two names sharing one object.
  */
 export function TraceDebugger({ trace, isRunning }: { trace: ExecutionTrace | null; isRunning: boolean }) {
   const { state, dispatch } = useWorkspace();
   const [playing, setPlaying] = useState(false);
+  const [inspector, setInspector] = useState<Inspector>("table");
 
   const steps = trace?.steps ?? [];
   const total = steps.length;
@@ -54,8 +57,9 @@ export function TraceDebugger({ trace, isRunning }: { trace: ExecutionTrace | nu
   }
 
   const step = steps[index];
-  const prevLocals = index > 0 ? steps[index - 1].locals : {};
+  const previous = index > 0 ? steps[index - 1] : null;
   const varNames = Object.keys(step.locals);
+  const scope = step.func === "<module>" ? "Modulebene" : `${step.func}()`;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -128,24 +132,44 @@ export function TraceDebugger({ trace, isRunning }: { trace: ExecutionTrace | nu
         <div className="mb-3 flex items-center gap-2 font-mono text-[12.5px]">
           <span className="numeric text-fg-subtle">L{step.line}</span>
           <span className="min-w-0 flex-1 truncate text-fg">{step.source}</span>
+          <Badge tone="neutral">{scope}</Badge>
           {trace?.truncated && index === total - 1 && <Badge tone="warning">stopped early</Badge>}
         </div>
 
-        <div className="label-caps mb-1.5">Variablen</div>
+        <div className="mb-1.5 flex items-center justify-between gap-3">
+          <span className="label-caps">Variablen</span>
+          <Tabs
+            label="Ansicht"
+            value={inspector}
+            onChange={setInspector}
+            options={[
+              { value: "table", label: "Werte", icon: <Table2 size={11} /> },
+              { value: "memory", label: "Speicher", icon: <Boxes size={11} /> },
+            ]}
+          />
+        </div>
+
         {varNames.length === 0 ? (
           <p className="mb-3 font-mono text-[12px] text-fg-subtle">(noch keine)</p>
+        ) : inspector === "memory" ? (
+          <div className="mb-3">
+            <MemoryDiagram bindings={step.locals} heap={step.heap} />
+          </div>
         ) : (
           <table className="mb-3 w-full border-collapse font-mono text-[12.5px]">
             <tbody>
               {varNames.map((name) => {
                 const value = step.locals[name];
-                const isNew = !(name in prevLocals);
-                const changed = !isNew && JSON.stringify(prevLocals[name]) !== JSON.stringify(value);
+                const isNew = previous ? !(name in previous.locals) : true;
+                const changed =
+                  !isNew &&
+                  previous !== null &&
+                  hasChanged(name, step.locals, step.heap, previous.locals, previous.heap);
                 return (
                   <tr key={name} className="border-b border-line last:border-0">
                     <td className="w-0 whitespace-nowrap py-1 pr-3 align-top text-fg-muted">{name}</td>
                     <td className={cn("py-1 align-top", isNew || changed ? "text-accent" : "text-fg")}>
-                      {formatValue(value)}
+                      {formatValue(value, step.heap)}
                       {(isNew || changed) && (
                         <Badge tone="accent" className="ml-2 align-middle">
                           {isNew ? "neu" : "geändert"}

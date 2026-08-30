@@ -6,6 +6,10 @@ import type { ProjectFile } from "@/lib/types";
  * Socratic guidance works end-to-end without the user having to write
  * anything first.
  *
+ * `lists.py` carries the other classic misconception — two names for one list
+ * — so the memory view has something to show on a fresh workspace without the
+ * user having to construct the case themselves.
+ *
  * `helpers.py` is not imported by `main.py` at run time — the executor
  * doesn't support cross-file imports yet (see docs/ARCHITECTURE.md) — but it
  * demonstrates the file tree and gives the assistant a second file to
@@ -24,6 +28,17 @@ export const STARTER_FILES: ProjectFile[] = [
 
 grades = [88, 92, 79, 95, 84]
 print("Average:", average(grades))
+`,
+  },
+  {
+    path: "lists.py",
+    language: "python",
+    content: `scores = [10, 20, 30]
+backup = scores
+backup.append(40)
+
+print("scores:", scores)
+print("backup:", backup)
 `,
   },
   {

@@ -1,6 +1,6 @@
 "use client";
 
-import { Play, TriangleAlert } from "lucide-react";
+import { Eye, EyeOff, Play, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Tabs } from "@/components/ui/Tabs";
@@ -18,7 +18,16 @@ import type { ExecutionTrace } from "@/lib/types";
  */
 export function RunPanel() {
   const { state, dispatch } = useWorkspace();
-  const { files, activePath, isRunning, lastTrace, connectionError, traceViewMode } = state;
+  const {
+    files,
+    activePath,
+    isRunning,
+    lastTrace,
+    connectionError,
+    traceViewMode,
+    annotations,
+    showInlineValues,
+  } = state;
 
   const run = () => {
     if (!activePath) return;
@@ -40,10 +49,29 @@ export function RunPanel() {
             ]}
           />
         </div>
-        <Button size="sm" variant="primary" onClick={run} disabled={!activePath || isRunning}>
-          <Play size={13} />
-          {isRunning ? "Running…" : "Run"}
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          {annotations.length > 0 && (
+            <Badge tone="accent">
+              {annotations.length} {annotations.length === 1 ? "Anmerkung" : "Anmerkungen"}
+            </Badge>
+          )}
+          {traceViewMode === "debug" && (
+            <Button
+              size="sm"
+              variant="ghost"
+              aria-pressed={showInlineValues}
+              title={showInlineValues ? "Werte im Editor ausblenden" : "Werte im Editor einblenden"}
+              onClick={() => dispatch({ type: "SET_SHOW_INLINE_VALUES", show: !showInlineValues })}
+            >
+              {showInlineValues ? <Eye size={13} /> : <EyeOff size={13} />}
+              Werte
+            </Button>
+          )}
+          <Button size="sm" variant="primary" onClick={run} disabled={!activePath || isRunning}>
+            <Play size={13} />
+            {isRunning ? "Running…" : "Run"}
+          </Button>
+        </div>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col">
@@ -73,7 +101,12 @@ function OutputView({ trace }: { trace: ExecutionTrace | null }) {
   return (
     <div className="flex-1 overflow-y-auto px-3 py-2 font-mono text-[12.5px] leading-relaxed">
       {trace.error ? (
-        <div className="whitespace-pre-wrap text-danger">{trace.error}</div>
+        <div className="whitespace-pre-wrap text-danger">
+          {trace.error}
+          {trace.errorLine !== null && (
+            <span className="ml-2 text-fg-subtle">(Zeile {trace.errorLine})</span>
+          )}
+        </div>
       ) : (
         <div className="whitespace-pre-wrap text-fg">{trace.stdout || "(no output)"}</div>
       )}

@@ -1,18 +1,24 @@
 """WebSocket transport for the workspace: run/trace + chat.
 
 Message envelope (both directions): ``{"type": "...", "payload": {...}}``
+Payload keys are camelCase — see `app/models/schemas.py`.
 
 Client → server:
-  run_code       {"files": [<ProjectFile>...], "entry_path": "main.py"}
+  run_code       {"files": [<ProjectFile>...], "entryPath": "main.py"}
   chat_message   {"message": "...", "history": [<ChatMessage>...],
-                  "files": [<ProjectFile>...], "active_path": "main.py",
-                  "last_trace": <ExecutionTrace> | null}
+                  "files": [<ProjectFile>...], "activePath": "main.py",
+                  "lastTrace": <ExecutionTrace> | null,
+                  "debugStepIndex": <int> | null}
 
 Server → client:
-  trace_step         {<TraceStep>}            streamed one-by-one during run_code
-  run_result          {<ExecutionTrace>}       final trace after run_code completes
-  assistant_message   {<ChatMessage>}          full (non-streamed) reply after chat_message
-  error                {"message": "..."}
+  trace_batch         {"steps": [<TraceStep>...]}   streamed while a run replays
+  run_result          {<ExecutionTrace>}            final trace after run_code
+  annotations         {"annotations": [<Annotation>...]}  editor marks for a reply
+  assistant_message   {<ChatMessage>}               full (non-streamed) reply
+  error               {"message": "..."}
+
+Annotations are sent *before* the message they belong to, so the editor is
+already marked up when the reply lands next to it.
 
 Stateless: every message carries the full context it needs (files, chat
 history). There is no server-side session.
@@ -30,7 +36,11 @@ from app.models.schemas import ChatRequest, ProjectFile
 
 router = APIRouter()
 
-_STEP_DELAY_SECONDS = 0.35  # pacing for the UI animation
+# Steps are streamed in batches so the run reads as progressive without the
+# transport pacing the animation: the step debugger has its own play speed, and
+# a per-step delay meant a 2000-step trace took minutes to arrive.
+_BATCH_SIZE = 40
+_BATCH_DELAY_SECONDS = 0.04
 
 
 @router.websocket("/ws/workspace")
@@ -44,16 +54,27 @@ async def workspace_socket(ws: WebSocket) -> None:
 
             if mtype == "run_code":
                 files = [ProjectFile(**f) for f in payload["files"]]
-                trace = await asyncio.to_thread(workspace.handle_run, files, payload["entry_path"])
-                for step in trace.steps:
-                    await ws.send_json({"type": "trace_step", "payload": step.model_dump(mode="json")})
-                    await asyncio.sleep(_STEP_DELAY_SECONDS)
-                await ws.send_json({"type": "run_result", "payload": trace.model_dump(mode="json")})
+                entry_path = payload.get("entryPath") or payload.get("entry_path")
+                trace = await asyncio.to_thread(workspace.handle_run, files, entry_path)
+                for start in range(0, len(trace.steps), _BATCH_SIZE):
+                    chunk = trace.steps[start : start + _BATCH_SIZE]
+                    await ws.send_json(
+                        {"type": "trace_batch", "payload": {"steps": [s.wire() for s in chunk]}}
+                    )
+                    await asyncio.sleep(_BATCH_DELAY_SECONDS)
+                await ws.send_json({"type": "run_result", "payload": trace.wire()})
 
             elif mtype == "chat_message":
                 req = ChatRequest(**payload)
                 reply = await asyncio.to_thread(workspace.handle_chat, req)
-                await ws.send_json({"type": "assistant_message", "payload": reply.model_dump(mode="json")})
+                if reply.annotations:
+                    await ws.send_json(
+                        {
+                            "type": "annotations",
+                            "payload": {"annotations": [a.wire() for a in reply.annotations]},
+                        }
+                    )
+                await ws.send_json({"type": "assistant_message", "payload": reply.message.wire()})
 
             else:
                 await ws.send_json({"type": "error", "payload": {"message": f"unknown type '{mtype}'"}})

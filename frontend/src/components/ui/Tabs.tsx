@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 export function Tabs<T extends string>({
@@ -9,7 +10,7 @@ export function Tabs<T extends string>({
   label,
 }: {
   value: T;
-  options: ReadonlyArray<{ value: T; label: string }>;
+  options: ReadonlyArray<{ value: T; label: string; icon?: ReactNode }>;
   onChange: (next: T) => void;
   label: string;
 }) {
@@ -25,10 +26,11 @@ export function Tabs<T extends string>({
             aria-selected={active}
             onClick={() => onChange(o.value)}
             className={cn(
-              "rounded px-2.5 py-1 text-[12px] transition-colors duration-150",
+              "flex items-center gap-1.5 rounded px-2.5 py-1 text-[12px] transition-colors duration-150",
               active ? "bg-surface text-fg shadow-panel" : "text-fg-muted hover:text-fg",
             )}
           >
+            {o.icon}
             {o.label}
           </button>
         );

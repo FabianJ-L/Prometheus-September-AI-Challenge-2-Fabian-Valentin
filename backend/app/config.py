@@ -27,7 +27,9 @@ class Settings(BaseSettings):
     anthropic_api_key: str | None = Field(default=None, alias="ANTHROPIC_API_KEY")
     ai_model: str = Field(default="claude-opus-5", alias="NOESIS_AI_MODEL")
     ai_thinking: str = Field(default="adaptive", alias="NOESIS_AI_THINKING")
-    ai_max_tokens: int = Field(default=4096, alias="NOESIS_AI_MAX_TOKENS")
+    # Room for a reply plus several annotation tool calls; hitting the cap
+    # truncates mid-thought and costs a retry.
+    ai_max_tokens: int = Field(default=16000, alias="NOESIS_AI_MAX_TOKENS")
 
     # --- sandboxed executor ---------------------------------------------
     exec_timeout_seconds: float = Field(default=5.0, alias="NOESIS_EXEC_TIMEOUT_SECONDS")
