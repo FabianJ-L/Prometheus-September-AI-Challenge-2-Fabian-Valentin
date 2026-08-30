@@ -1,7 +1,7 @@
 [project]
 name = "noesis-backend"
 version = "0.1.0"
-description = "NOESIS backend — AST parser, step executor, student model, AI diagnostic pipeline"
+description = "NOESIS backend — AST parser, step executor, and the Socratic/annotation AI pipeline"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

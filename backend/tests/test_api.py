@@ -40,7 +40,7 @@ def test_chat_endpoint_mock_mode():
         "message": "why is this wrong?",
         "history": [],
         "files": [{"path": "main.py", "content": "print(1)"}],
-        "active_path": "main.py",
+        "activePath": "main.py",
     }
     r = client.post("/api/chat", json=body)
     assert r.status_code == 200

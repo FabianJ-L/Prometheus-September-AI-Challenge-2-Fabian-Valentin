@@ -22,8 +22,8 @@ back — building a per-student **mental model** of what they actually understan
 
 ```
 .
-├── backend/     FastAPI service: AST parser, step executor, student model, AI diagnostic
-├── frontend/    Next.js (App Router) app: the Predict → Execute → Diagnose loop UI
+├── backend/     FastAPI service: AST parser, step executor, Socratic/annotation AI pipeline
+├── frontend/    Next.js (App Router) app: the code editor, trace debugger and chat UI
 ├── docs/        Architecture, data model, demo script
 ├── .env.example Shared local env template
 └── Makefile     Dev convenience targets
@@ -44,7 +44,7 @@ cp .env.example .env
 cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env.local
 # (optional) put your ANTHROPIC_API_KEY in backend/.env — without it the
-# backend runs in MOCK mode with canned diagnostics.
+# chat assistant runs in MOCK mode with a canned reply.
 
 # 2. Backend  →  http://localhost:8000  (docs at /docs)
 cd backend
