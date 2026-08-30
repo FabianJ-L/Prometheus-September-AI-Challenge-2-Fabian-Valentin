@@ -22,8 +22,8 @@ back — building a per-student **mental model** of what they actually understan
 
 ```
 .
-├── backend/     FastAPI sandbox: AST parser + step-by-step Python executor/tracer only
-├── frontend/    Next.js (App Router) app: UI, workspace state, and the Socratic chat/AI layer
+├── backend/     FastAPI service: AST parser, step executor, Socratic/annotation AI pipeline
+├── frontend/    Next.js (App Router) app: the code editor, trace debugger and chat UI
 ├── docs/        Architecture, data model, demo script
 ├── .env.example Shared local env template
 └── Makefile     Dev convenience targets
@@ -43,8 +43,8 @@ Prerequisites: **Node 20+**, **Python 3.11+**, and [`uv`](https://docs.astral.sh
 cp .env.example .env
 cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env.local
-# (optional) put your ANTHROPIC_API_KEY in frontend/.env.local — without it
-# the chat assistant runs in MOCK mode with a canned reply.
+# (optional) put your ANTHROPIC_API_KEY in backend/.env — without it the
+# chat assistant runs in MOCK mode with a canned reply.
 
 # 2. Backend  →  http://localhost:8000  (docs at /docs)
 cd backend

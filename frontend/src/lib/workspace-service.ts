@@ -2,7 +2,14 @@
 
 import type { Dispatch } from "react";
 import type { WorkspaceAction } from "@/lib/workspace";
-import type { ChatMessage, ExecutionTrace, ProjectFile, TraceStep, WorkspaceState } from "@/lib/types";
+import type {
+  Annotation,
+  ChatMessage,
+  ExecutionTrace,
+  ProjectFile,
+  TraceStep,
+  WorkspaceState,
+} from "@/lib/types";
 
 const WS_BASE_URL = process.env.NEXT_PUBLIC_WS_BASE_URL ?? "ws://localhost:8000";
 const WS_URL = `${WS_BASE_URL}/api/ws/workspace`;
@@ -12,11 +19,9 @@ type Envelope = { type: string; payload: unknown };
 
 /**
  * Thin wrapper around a raw browser WebSocket, mirroring the request/response
- * shape of `backend/app/api/routes/ws.py`, plus a `fetch` call for chat
- * (handled entirely within this Next.js app — see `app/api/chat/route.ts`).
- * Dispatches incoming events straight into the workspace reducer. v1 keeps
- * reconnect simple: a single retry after a short delay, no exponential
- * backoff.
+ * shape of `backend/app/api/routes/ws.py`. Dispatches incoming events
+ * straight into the workspace reducer. v1 keeps reconnect simple: a single
+ * retry after a short delay, no exponential backoff.
  */
 export class WorkspaceService {
   private socket: WebSocket | null = null;
@@ -56,11 +61,22 @@ export class WorkspaceService {
   private handleMessage(envelope: Envelope): void {
     if (!this.dispatch) return;
     switch (envelope.type) {
-      case "trace_step":
-        this.dispatch({ type: "APPEND_TRACE_STEP", step: envelope.payload as TraceStep });
+      case "trace_batch": {
+        const steps = (envelope.payload as { steps?: TraceStep[] })?.steps ?? [];
+        if (steps.length > 0) this.dispatch({ type: "APPEND_TRACE_STEPS", steps });
         break;
+      }
       case "run_result":
         this.dispatch({ type: "SET_RUN_RESULT", trace: envelope.payload as ExecutionTrace });
+        break;
+      case "annotations": {
+        const annotations = (envelope.payload as { annotations?: Annotation[] })?.annotations ?? [];
+        this.dispatch({ type: "SET_ANNOTATIONS", annotations });
+        break;
+      }
+      case "assistant_message":
+        this.dispatch({ type: "APPEND_CHAT_MESSAGE", message: envelope.payload as ChatMessage });
+        this.dispatch({ type: "SET_ASSISTANT_THINKING", thinking: false });
         break;
       case "error": {
         const message = (envelope.payload as { message?: string })?.message ?? "Something went wrong.";
@@ -82,36 +98,27 @@ export class WorkspaceService {
 
   runCode(files: ProjectFile[], entryPath: string): void {
     this.dispatch?.({ type: "SET_RUNNING", running: true });
-    this.send({ type: "run_code", payload: { files, entry_path: entryPath } });
+    this.send({ type: "run_code", payload: { files, entryPath } });
   }
 
   sendChatMessage(message: string, state: WorkspaceState): void {
     const userTurn: ChatMessage = { role: "user", content: message, createdAt: new Date().toISOString() };
     this.dispatch?.({ type: "APPEND_CHAT_MESSAGE", message: userTurn });
     this.dispatch?.({ type: "SET_ASSISTANT_THINKING", thinking: true });
-
-    fetch("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+    // Annotations belong to the reply that placed them; the next question
+    // gets a clean editor rather than accumulating marks from earlier turns.
+    this.dispatch?.({ type: "CLEAR_ANNOTATIONS" });
+    this.send({
+      type: "chat_message",
+      payload: {
         message,
         history: state.chatHistory,
         files: state.files,
         activePath: state.activePath,
         lastTrace: state.lastTrace,
-      }),
-    })
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`chat request failed (${res.status})`);
-        const reply = (await res.json()) as ChatMessage;
-        this.dispatch?.({ type: "APPEND_CHAT_MESSAGE", message: reply });
-      })
-      .catch(() => {
-        this.dispatch?.({ type: "SET_CONNECTION_ERROR", message: "Couldn't reach the AI assistant." });
-      })
-      .finally(() => {
-        this.dispatch?.({ type: "SET_ASSISTANT_THINKING", thinking: false });
-      });
+        debugStepIndex: state.traceViewMode === "debug" ? state.debugStepIndex : null,
+      },
+    });
   }
 }
 

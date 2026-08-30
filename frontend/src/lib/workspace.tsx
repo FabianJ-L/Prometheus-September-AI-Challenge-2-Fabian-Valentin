@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import type {
+  Annotation,
   ChatMessage,
   ExecutionTrace,
   ProjectFile,
@@ -19,7 +20,7 @@ import type {
 } from "@/lib/types";
 import { STARTER_ENTRY_PATH, STARTER_FILES } from "@/mock/starter-project";
 
-const STORAGE_KEY = "noesis.workspace.v1";
+const STORAGE_KEY = "noesis.workspace.v2";
 
 function seedState(): WorkspaceState {
   return {
@@ -32,6 +33,8 @@ function seedState(): WorkspaceState {
     connectionError: null,
     traceViewMode: "output",
     debugStepIndex: 0,
+    annotations: [],
+    showInlineValues: true,
   };
 }
 
@@ -44,11 +47,14 @@ export type WorkspaceAction =
   | { type: "APPEND_CHAT_MESSAGE"; message: ChatMessage }
   | { type: "SET_ASSISTANT_THINKING"; thinking: boolean }
   | { type: "SET_RUNNING"; running: boolean }
-  | { type: "APPEND_TRACE_STEP"; step: TraceStep }
+  | { type: "APPEND_TRACE_STEPS"; steps: TraceStep[] }
   | { type: "SET_RUN_RESULT"; trace: ExecutionTrace }
   | { type: "SET_CONNECTION_ERROR"; message: string | null }
   | { type: "SET_TRACE_VIEW_MODE"; mode: TraceViewMode }
   | { type: "SET_DEBUG_STEP_INDEX"; index: number }
+  | { type: "SET_ANNOTATIONS"; annotations: Annotation[] }
+  | { type: "CLEAR_ANNOTATIONS" }
+  | { type: "SET_SHOW_INLINE_VALUES"; show: boolean }
   | { type: "RESET_WORKSPACE" }
   | { type: "HYDRATE"; state: WorkspaceState };
 
@@ -91,24 +97,43 @@ function reducer(state: WorkspaceState, action: WorkspaceAction): WorkspaceState
       return { ...state, isAssistantThinking: action.thinking };
 
     case "SET_RUNNING":
+      // A new run supersedes whatever the assistant marked about the old one.
       return action.running
-        ? { ...state, isRunning: true, lastTrace: null, connectionError: null, debugStepIndex: 0 }
+        ? {
+            ...state,
+            isRunning: true,
+            lastTrace: null,
+            connectionError: null,
+            debugStepIndex: 0,
+            annotations: [],
+          }
         : { ...state, isRunning: false };
 
-    case "APPEND_TRACE_STEP": {
+    case "APPEND_TRACE_STEPS": {
       const base: ExecutionTrace = state.lastTrace ?? {
         entryPath: state.activePath ?? "",
         steps: [],
         finalLocals: {},
+        finalHeap: {},
         stdout: "",
         error: null,
+        errorLine: null,
         truncated: false,
       };
-      return { ...state, lastTrace: { ...base, steps: [...base.steps, action.step] } };
+      return { ...state, lastTrace: { ...base, steps: [...base.steps, ...action.steps] } };
     }
 
     case "SET_RUN_RESULT":
       return { ...state, lastTrace: action.trace, isRunning: false, debugStepIndex: 0 };
+
+    case "SET_ANNOTATIONS":
+      return { ...state, annotations: action.annotations };
+
+    case "CLEAR_ANNOTATIONS":
+      return { ...state, annotations: [] };
+
+    case "SET_SHOW_INLINE_VALUES":
+      return { ...state, showInlineValues: action.show };
 
     case "SET_CONNECTION_ERROR":
       return { ...state, connectionError: action.message, isRunning: false, isAssistantThinking: false };
@@ -146,7 +171,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as WorkspaceState;
-        dispatch({ type: "HYDRATE", state: { ...seedState(), ...parsed } });
+        dispatch({ type: "HYDRATE", state: { ...seedState(), ...parsed, annotations: [] } });
       }
     } catch {
       /* private mode / blocked storage — defaults are fine */
@@ -156,7 +181,11 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      // Annotations are deliberately not persisted: they belong to one moment
+      // in one conversation, and restoring them after a reload would point at
+      // code the user may have edited in between.
+      const { annotations: _dropped, ...persisted } = state;
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
     } catch {
       /* ignore */
     }

@@ -2,11 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ArrowUp, Bot, MessageCircleQuestion } from "lucide-react";
+import { Markdown } from "@/components/ui/Markdown";
 import { cn } from "@/lib/utils";
 import { useWorkspace } from "@/lib/workspace";
 import { getWorkspaceService } from "@/lib/workspace-service";
 
-/** Chat scrollback + input. No token streaming in v1 — a reply arrives whole. */
+/** Chat scrollback + input. No token streaming in v1 — a reply arrives whole.
+ *
+ * The assistant's replies render Markdown; the user's stay verbatim, because
+ * someone pasting code should see exactly what they pasted. */
 export function ChatPanel() {
   const { state } = useWorkspace();
   const { chatHistory, isAssistantThinking } = state;
@@ -50,7 +54,11 @@ export function ChatPanel() {
               msg.role === "user" ? "ml-auto bg-accent/10 text-fg" : "bg-raised text-fg",
             )}
           >
-            <p className="whitespace-pre-wrap">{msg.content}</p>
+            {msg.role === "assistant" ? (
+              <Markdown text={msg.content} />
+            ) : (
+              <p className="whitespace-pre-wrap">{msg.content}</p>
+            )}
           </div>
         ))}
 
