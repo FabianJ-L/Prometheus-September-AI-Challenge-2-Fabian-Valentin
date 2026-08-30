@@ -11,7 +11,7 @@ from __future__ import annotations
 from app.ai.client import get_ai_client
 from app.ai.mock import offline_annotations
 from app.ai.prompts import SYSTEM, build_messages, render_context_block
-from app.ai.tools import TOOLS, build_annotation
+from app.ai.tools import TOOLS, build_annotation, read_focus_step
 from app.core.executor import run_trace
 from app.models.schemas import (
     Annotation,
@@ -45,21 +45,39 @@ def handle_chat(req: ChatRequest) -> ChatResponse:
     if client.is_mock:
         # No key: say so plainly, and let the trace speak for itself.
         text = client.converse(SYSTEM, [])
+        marks = offline_annotations(req.files, req.active_path, req.last_trace, req.anchor)
+        for mark in marks:
+            mark.thread_id = req.thread_id
         return ChatResponse(
             message=ChatMessage(role=ChatRole.assistant, content=text),
-            annotations=offline_annotations(req.files, req.active_path, req.last_trace),
+            annotations=marks,
+            thread_id=req.thread_id,
             mock=True,
         )
 
     annotations: list[Annotation] = []
+    focus: list[int] = []
+    total_steps = len(req.last_trace.steps) if req.last_trace else 0
 
     def on_tool_call(name: str, payload: dict) -> str:
-        """Validate one annotation and tell the model what actually happened.
+        """Validate one tool call and tell the model what actually happened.
 
         The honesty here is deliberate: when an anchor is rejected the model
         finds out inside the same turn, so it can re-anchor instead of writing
         prose about a mark the student cannot see.
         """
+        if name == "focus_step":
+            resolved = read_focus_step(payload, total_steps)
+            if resolved is None:
+                return (
+                    "Not moved: there is no such step in the last run"
+                    f" ({total_steps} steps). Leave the debugger where it is."
+                )
+            index, _because = resolved
+            focus.clear()
+            focus.append(index)
+            return f"Debugger moved to step {index + 1}."
+
         if len(annotations) >= MAX_ANNOTATIONS:
             return "Annotation limit reached for this reply. Say the rest in your text."
 
@@ -70,16 +88,21 @@ def handle_chat(req: ChatRequest) -> ChatResponse:
                 "verbatim from the file above, or leave this point to your text."
             )
 
+        annotation.thread_id = req.thread_id
         annotations.append(annotation)
         return f"Placed on line {annotation.anchor.line}."
 
-    context = render_context_block(req.files, req.active_path, req.last_trace, req.debug_step_index)
+    context = render_context_block(
+        req.files, req.active_path, req.last_trace, req.debug_step_index, req.anchor
+    )
     messages = build_messages(req.history, req.message, context)
     text = client.converse(SYSTEM, messages, tools=TOOLS, on_tool_call=on_tool_call)
 
     return ChatResponse(
         message=ChatMessage(role=ChatRole.assistant, content=text),
         annotations=annotations,
+        thread_id=req.thread_id,
+        focus_step=focus[0] if focus else None,
         mock=False,
     )
 

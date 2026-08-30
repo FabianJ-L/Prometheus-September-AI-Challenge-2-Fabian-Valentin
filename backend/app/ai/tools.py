@@ -140,6 +140,31 @@ TOOLS: list[dict[str, Any]] = [
         ),
     },
     {
+        "name": "focus_step",
+        "description": (
+            "Move the student's step debugger to a specific step of the last "
+            "run, so 'look at what happens here' actually takes them there. Use "
+            "it when the answer lives at a particular moment of execution — the "
+            "step where a value first goes wrong, where a loop turns over, where "
+            "the object gets mutated. Step numbers come from the trace you were "
+            "given. Use at most once per reply."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "step": {
+                    "type": "integer",
+                    "description": "1-based step number from the run, as shown in the trace.",
+                },
+                "because": {
+                    "type": "string",
+                    "description": "Short reason, shown to the student. 3-8 words.",
+                },
+            },
+            "required": ["step", "because"],
+        },
+    },
+    {
         "name": "show_memory",
         "description": (
             "Open a memory diagram under a line, showing which names point at "
@@ -226,6 +251,24 @@ def _short(value: Any, limit: int = 48) -> str | None:
         return None
     text = " ".join(str(value).split())
     return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def read_focus_step(raw: dict[str, Any], total_steps: int) -> tuple[int, str] | None:
+    """Validate a ``focus_step`` call against the run that actually happened.
+
+    Returns a 0-based index plus the reason, or ``None`` when there is no such
+    step — a debugger that jumps somewhere arbitrary is worse than one that
+    stays put.
+    """
+    if total_steps <= 0:
+        return None
+    try:
+        step = int(raw.get("step", 0))
+    except (TypeError, ValueError):
+        return None
+    if not 1 <= step <= total_steps:
+        return None
+    return step - 1, _short(raw.get("because")) or ""
 
 
 def build_annotation(

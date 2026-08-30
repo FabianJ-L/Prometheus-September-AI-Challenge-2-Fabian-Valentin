@@ -59,6 +59,26 @@ onto the code itself. Tool use rather than markup in the reply means a
 malformed annotation cannot half-render, and every call is checked before the
 UI sees it.
 
+### Where the conversation lives
+
+The assistant is not reachable through a chat pane. Questions are asked **in
+the editor, at a line**: the gutter offers a "?" on the line under the pointer
+(or ⌘I on the caret's line), and the reply opens in a view zone directly under
+that line.
+
+That is not a cosmetic move. An anchored question carries its own subject —
+`ChatRequest.anchor` — so neither side has to describe where "this" is, and the
+answer can be rendered at the code it concerns. A `Thread` is therefore a
+conversation pinned to a place, closer to a review comment than to a chat log.
+The panel on the right is an *index* of those threads, collapsed to a rail by
+default; a pane that is always open quietly makes itself the main way in.
+
+`focus_step` is the other half of the same idea: rather than telling a student
+which step to find, the assistant moves their debugger there. It is validated
+against the run that actually happened — a step number outside the trace is
+refused, because a debugger that jumps somewhere arbitrary is worse than one
+that stays put.
+
 ### Annotations
 
 An annotation carries a `source` that the UI never blurs:
@@ -112,7 +132,8 @@ gamification · multiple languages. **Python only. One small lesson set.**
 | Code sandbox | `sys.settrace` + reduced builtins + step/time cap, in-process | subprocess isolate / container / Pyodide (WASM) |
 | Persistence | in-memory `app/store.py`, single anonymous learner | SQLite → Postgres |
 | Student model | exponential moving average per concept | Bayesian Knowledge Tracing / IRT |
-| Dialogue | multi-turn chat, no token streaming | streamed text + streamed annotations |
+| Dialogue | multi-turn threads, no token streaming | streamed text + streamed annotations |
+| Prediction step | not built — the README's PREDICT stage has no UI yet | predict-before-run, compared against the trace |
 | Misconception classifier | not built; the model reasons from the trace | fine-tuned classifier + eval set |
 | Student model | not built | per-concept mastery across sessions |
 | Annotation lifetime | cleared on each new question or run | reviewable history |

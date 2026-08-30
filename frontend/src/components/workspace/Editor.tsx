@@ -4,12 +4,15 @@ import MonacoEditor, { loader, type Monaco, type OnMount } from "@monaco-editor/
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { editor as MonacoEditorNS } from "monaco-editor";
 import { AnnotationBlock } from "@/components/workspace/AnnotationBlock";
+import { MemoryDiagram } from "@/components/workspace/MemoryDiagram";
+import { AskComposer, ThreadCard } from "@/components/workspace/ThreadCard";
 import { EditorInline } from "@/components/workspace/EditorInline";
 import { EditorZone } from "@/components/workspace/EditorZone";
 import { resolveAnnotations, toneClass, type ResolvedAnnotation } from "@/lib/annotations";
 import { applyNoesisTheme, NOESIS_THEME } from "@/lib/monaco-theme";
 import { useSettings } from "@/lib/settings";
 import { formatValue } from "@/lib/values";
+import { getWorkspaceService } from "@/lib/workspace-service";
 import { useWorkspace } from "@/lib/workspace";
 import type { Heap, TraceStep, TraceValue } from "@/lib/types";
 
@@ -34,6 +37,11 @@ loader.config({ paths: { vs: "/monaco/vs" } });
  *     values from the trace, anchored past the end of the line so they never
  *     sit on top of code. (Decoration injected text would be the natural fit
  *     and renders nothing in the bundled Monaco — see EditorInline.)
+ *
+ * The same view zones carry the conversation. Asking happens here, at a line,
+ * not in a panel on the right: the question arrives already knowing what it is
+ * about, and the answer appears under the code it concerns. That is the whole
+ * difference between this and a chat window next to an editor.
  */
 export function Editor() {
   const { state, dispatch } = useWorkspace();
@@ -45,18 +53,19 @@ export function Editor() {
 
   const [mounted, setMounted] = useState(false);
   const [dismissed, setDismissed] = useState<string[]>([]);
+  const [hoveredLine, setHoveredLine] = useState<number | null>(null);
 
   const activeFile = state.files.find((f) => f.path === state.activePath) ?? null;
 
   /* --- what the trace says (measured) ---------------------------------- */
 
   const debugStep = useMemo<TraceStep | null>(() => {
-    if (state.traceViewMode !== "debug" || !state.lastTrace || state.isRunning) return null;
+    if (!state.lastTrace || state.isRunning) return null;
     if (state.lastTrace.entryPath !== activeFile?.path) return null;
     const steps = state.lastTrace.steps;
     if (steps.length === 0) return null;
     return steps[Math.min(state.debugStepIndex, steps.length - 1)] ?? null;
-  }, [state.traceViewMode, state.lastTrace, state.isRunning, state.debugStepIndex, activeFile?.path]);
+  }, [state.lastTrace, state.isRunning, state.debugStepIndex, activeFile?.path]);
 
   const currentLine = debugStep && debugStep.source.length > 0 ? debugStep.line : null;
 
@@ -84,6 +93,12 @@ export function Editor() {
 
   const blocks = annotations.filter((a) => a.kind === "note" || a.kind === "memory");
   const labelled = annotations.filter((a) => a.label && (a.kind === "line" || a.kind === "range"));
+
+  const threads = useMemo(
+    () => state.threads.filter((t) => t.anchor?.path === activeFile?.path),
+    [state.threads, activeFile?.path],
+  );
+  const openThreads = threads.filter((t) => !t.collapsed);
 
   // Column just past the last character of each line, so trailing widgets sit
   // clear of the code rather than on it.
@@ -119,6 +134,23 @@ export function Editor() {
           className: "noesis-current-line",
           glyphMarginClassName: "noesis-glyph noesis-glyph--current",
           stickiness: 1, // NeverGrowsWhenTypingAtEdges
+        },
+      });
+    }
+
+    if (
+      hoveredLine !== null &&
+      hoveredLine <= model.getLineCount() &&
+      state.composingAt === null &&
+      !annotations.some((a) => a.line === hoveredLine) &&
+      currentLine !== hoveredLine
+    ) {
+      next.push({
+        range: { startLineNumber: hoveredLine, startColumn: 1, endLineNumber: hoveredLine, endColumn: 1 },
+        options: {
+          isWholeLine: true,
+          glyphMarginClassName: "noesis-glyph noesis-glyph--ask",
+          glyphMarginHoverMessage: { value: "Hier fragen  ·  ⌘I" },
         },
       });
     }
@@ -167,7 +199,7 @@ export function Editor() {
     }
 
     collection.set(next);
-  }, [annotations, currentLine]);
+  }, [annotations, currentLine, hoveredLine, state.composingAt]);
 
   /* --- markers (squiggles) --------------------------------------------- */
 
@@ -231,8 +263,31 @@ export function Editor() {
     monacoRef.current = monaco;
     decorations.current = editor.createDecorationsCollection([]);
     applyNoesisTheme(monaco);
+
+    // A "?" appears in the gutter of the line under the pointer — the same
+    // affordance a review comment uses, because that is what this is.
+    editor.onMouseMove((e) => setHoveredLine(e.target.position?.lineNumber ?? null));
+    editor.onMouseLeave(() => setHoveredLine(null));
+    editor.onMouseDown((e) => {
+      if (e.target.type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
+        const line = e.target.position?.lineNumber;
+        if (line) dispatch({ type: "OPEN_COMPOSER", line });
+      }
+    });
+
+    editor.addAction({
+      id: "noesis.ask",
+      label: "NOESIS: hier fragen",
+      keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyI],
+      contextMenuGroupId: "navigation",
+      run: (ed) => {
+        const line = ed.getPosition()?.lineNumber;
+        if (line) dispatch({ type: "OPEN_COMPOSER", line });
+      },
+    });
+
     setMounted(true);
-  }, []);
+  }, [dispatch]);
 
   if (!activeFile) {
     return (
@@ -319,8 +374,68 @@ export function Editor() {
             />
           </EditorZone>
         ))}
+
+      {/* The conversation, at the code it is about. */}
+      {mounted &&
+        editorRef.current &&
+        openThreads.map((thread) => (
+          <EditorZone
+            key={thread.id}
+            editor={editorRef.current!}
+            afterLineNumber={thread.anchor?.line ?? 1}
+          >
+            <ThreadCard
+              thread={thread}
+              onReply={(text) => getWorkspaceService().reply(thread.id, text, state)}
+              onClose={() => dispatch({ type: "CLOSE_THREAD", id: thread.id })}
+              onCollapse={() => dispatch({ type: "TOGGLE_THREAD", id: thread.id })}
+            />
+          </EditorZone>
+        ))}
+
+      {mounted && editorRef.current && state.composingAt !== null && (
+        <EditorZone editor={editorRef.current} afterLineNumber={state.composingAt}>
+          <AskComposer
+            line={state.composingAt}
+            onAsk={(text) =>
+              getWorkspaceService().ask(
+                text,
+                {
+                  path: activeFile.path,
+                  line: state.composingAt!,
+                  endLine: null,
+                  column: null,
+                  endColumn: null,
+                  snippet: lineText(activeFile.content, state.composingAt!),
+                },
+                state,
+              )
+            }
+            onCancel={() => dispatch({ type: "OPEN_COMPOSER", line: null })}
+          />
+        </EditorZone>
+      )}
+
+      {/* Memory, pinned to the step being examined. */}
+      {mounted && editorRef.current && state.showMemory && currentLine !== null && (
+        <EditorZone editor={editorRef.current} afterLineNumber={currentLine}>
+          <div className="noesis-zone-card noesis-zone-card--measured">
+            <div className="flex items-center gap-1.5 pb-1.5">
+              <span className="text-2xs font-medium uppercase tracking-[0.09em] text-success">
+                Speicher bei Zeile {currentLine}
+              </span>
+            </div>
+            <MemoryDiagram bindings={bindings} heap={heap} />
+          </div>
+        </EditorZone>
+      )}
     </div>
   );
+}
+
+/** The text of one line, used as an anchor snippet when a question is asked. */
+function lineText(content: string, line: number): string {
+  return (content.split("\n")[line - 1] ?? "").trim();
 }
 
 /** A compact "x = 1 · y = [1, 2]" for the end of the current line. */

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from app.models.schemas import (
     REF_KEY,
+    Anchor,
     ChatMessage,
     ExecutionTrace,
     HeapObject,
@@ -38,8 +39,14 @@ It's fine to skip the Socratic ramp and answer directly when:
 ## Annotating the editor
 
 You can write directly into the editor with tools: mark_line, mark_range,
-add_note, flag_problem and show_memory. Annotations are your strongest
-teaching instrument — pointing beats describing a location in words.
+add_note, flag_problem, show_memory and focus_step. These are your strongest
+teaching instrument — pointing beats describing a location in words, and
+moving the debugger beats telling someone which step to find.
+
+Most questions arrive **anchored to a line**: the student clicked on a line
+and asked there, and your reply appears in the editor directly under it. When
+that happens, "this", "here" and "it" mean that line — you never have to ask
+which part they mean, and you should not describe the location back to them.
 
 - **Point instead of describing.** Never write "on line 4, the expression
   `total + w`" in prose. Call mark_range on it. Prose then says *why*, and
@@ -52,6 +59,10 @@ teaching instrument — pointing beats describing a location in words.
 - **Match the tool to the claim.** flag_problem is for something
   demonstrably wrong, not for an opinion. show_memory is for reference
   confusion (aliasing, mutation) and needs a previous run.
+- **Drive the debugger instead of giving directions.** If the answer lives at
+  a moment of execution, call focus_step to take the student there rather
+  than writing "step to iteration three and look at total". You are operating
+  the tool with them, not narrating it.
 - **Notes belong in the editor, questions in the chat.** Use add_note for an
   observation tied to one specific place; keep your one guiding question in
   the reply text so the conversation stays readable.
@@ -67,7 +78,9 @@ teaching instrument — pointing beats describing a location in words.
   project, and the most recent run's output/error/trace provided to you —
   never generic advice detached from their real code.
 - Be concise. Prefer one sharp question or a short paragraph over a wall of
-  text.
+  text. An anchored reply is rendered inside the editor and pushes the code
+  apart, so two or three sentences is the budget — anything longer belongs in
+  an add_note or should be cut.
 - If the user pastes non-Python code, say you can currently only run/trace
   Python.
 """
@@ -117,6 +130,7 @@ def render_context_block(
     active_path: str | None,
     last_trace: ExecutionTrace | None,
     debug_step_index: int | None = None,
+    anchor: Anchor | None = None,
 ) -> str:
     """Render a deterministic markdown context block. No AI call."""
 
@@ -147,6 +161,14 @@ def render_context_block(
             parts.append(_render_step(last_trace.steps[index], index, len(last_trace.steps)))
     else:
         parts.append("## Last run\n(the student hasn't run this yet)")
+
+    if anchor is not None:
+        parts.append(
+            "## The student is asking here\n"
+            f"`{anchor.path}` line {anchor.line}: `{anchor.snippet or ''}`\n"
+            "Their question is about this line. Answer it there — do not ask "
+            "which part they mean, and do not restate the location."
+        )
 
     return "\n\n".join(parts)
 

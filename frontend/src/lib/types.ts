@@ -20,6 +20,25 @@ export interface ChatMessage {
   createdAt: string; // ISO
 }
 
+/**
+ * A conversation pinned to a place in the code.
+ *
+ * This is the shape that replaces a chat log. A question asked at line 4
+ * carries line 4 with it, so neither side has to describe where "this" is —
+ * and the reply can be rendered at the code it is about instead of in a
+ * scrollback somewhere else on screen. `anchor: null` is the fallback for a
+ * question that genuinely isn't about one place.
+ */
+export interface Thread {
+  id: string;
+  anchor: Anchor | null;
+  messages: ChatMessage[];
+  /** Waiting on a reply. */
+  pending: boolean;
+  /** Collapsed to a gutter marker rather than opened in the editor. */
+  collapsed: boolean;
+}
+
 /* -------------------------------------------------------------------------
  * Traced values
  *
@@ -116,26 +135,30 @@ export interface Annotation {
   label: string | null;
   body: string | null; // markdown, for notes
   variables: string[]; // for memory diagrams
+  threadId: string | null; // the conversation that placed it
   stale: boolean;
 }
-
-export type TraceViewMode = "output" | "debug";
 
 export interface WorkspaceState {
   files: ProjectFile[];
   activePath: string | null;
-  chatHistory: ChatMessage[];
+  /** Conversations, each pinned to a line (or not, for general questions). */
+  threads: Thread[];
   lastTrace: ExecutionTrace | null;
   isRunning: boolean;
   isAssistantThinking: boolean;
   connectionError: string | null;
-  /** "output": plain stdout, like actually running the program.
-   *  "debug": step through lines with the variable state at each one. */
-  traceViewMode: TraceViewMode;
-  /** Index into `lastTrace.steps` the debug view is currently showing. */
+  /** Position on the run's timeline. Output and stepping are the same view at
+   *  two positions of it, so there is no mode to switch. */
   debugStepIndex: number;
   /** Marks the assistant placed on the code, newest reply only. */
   annotations: Annotation[];
   /** Inline values in the editor at the current debug step. */
   showInlineValues: boolean;
+  /** Memory diagram pinned to the line the debugger is on. */
+  showMemory: boolean;
+  /** Line whose "ask here" composer is open, if any. */
+  composingAt: number | null;
+  /** The side panel is an index of threads, not the primary way in. */
+  threadListOpen: boolean;
 }

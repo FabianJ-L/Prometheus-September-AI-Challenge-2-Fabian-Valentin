@@ -10,31 +10,37 @@ import {
   type ReactNode,
 } from "react";
 import type {
+  Anchor,
   Annotation,
   ChatMessage,
   ExecutionTrace,
   ProjectFile,
+  Thread,
   TraceStep,
-  TraceViewMode,
   WorkspaceState,
 } from "@/lib/types";
 import { STARTER_ENTRY_PATH, STARTER_FILES } from "@/mock/starter-project";
 
-const STORAGE_KEY = "noesis.workspace.v2";
+const STORAGE_KEY = "noesis.workspace.v3";
+
+/** Past this the editor stops being a lesson and starts being a highlighter. */
+const MAX_VISIBLE_ANNOTATIONS = 8;
 
 function seedState(): WorkspaceState {
   return {
     files: STARTER_FILES,
     activePath: STARTER_ENTRY_PATH,
-    chatHistory: [],
+    threads: [],
     lastTrace: null,
     isRunning: false,
     isAssistantThinking: false,
     connectionError: null,
-    traceViewMode: "output",
     debugStepIndex: 0,
     annotations: [],
     showInlineValues: true,
+    showMemory: false,
+    composingAt: null,
+    threadListOpen: false,
   };
 }
 
@@ -44,17 +50,22 @@ export type WorkspaceAction =
   | { type: "CREATE_FILE"; path: string }
   | { type: "RENAME_FILE"; path: string; nextPath: string }
   | { type: "DELETE_FILE"; path: string }
-  | { type: "APPEND_CHAT_MESSAGE"; message: ChatMessage }
-  | { type: "SET_ASSISTANT_THINKING"; thinking: boolean }
+  | { type: "OPEN_COMPOSER"; line: number | null }
+  | { type: "START_THREAD"; id: string; anchor: Anchor | null; message: ChatMessage }
+  | { type: "APPEND_TO_THREAD"; id: string; message: ChatMessage }
+  | { type: "REPLY_TO_THREAD"; id: string | null; message: ChatMessage }
+  | { type: "TOGGLE_THREAD"; id: string }
+  | { type: "CLOSE_THREAD"; id: string }
+  | { type: "SET_THREAD_LIST_OPEN"; open: boolean }
   | { type: "SET_RUNNING"; running: boolean }
   | { type: "APPEND_TRACE_STEPS"; steps: TraceStep[] }
   | { type: "SET_RUN_RESULT"; trace: ExecutionTrace }
   | { type: "SET_CONNECTION_ERROR"; message: string | null }
-  | { type: "SET_TRACE_VIEW_MODE"; mode: TraceViewMode }
   | { type: "SET_DEBUG_STEP_INDEX"; index: number }
   | { type: "SET_ANNOTATIONS"; annotations: Annotation[] }
   | { type: "CLEAR_ANNOTATIONS" }
   | { type: "SET_SHOW_INLINE_VALUES"; show: boolean }
+  | { type: "SET_SHOW_MEMORY"; show: boolean }
   | { type: "RESET_WORKSPACE" }
   | { type: "HYDRATE"; state: WorkspaceState };
 
@@ -90,11 +101,67 @@ function reducer(state: WorkspaceState, action: WorkspaceAction): WorkspaceState
       return { ...state, files, activePath };
     }
 
-    case "APPEND_CHAT_MESSAGE":
-      return { ...state, chatHistory: [...state.chatHistory, action.message] };
+    case "OPEN_COMPOSER":
+      return { ...state, composingAt: action.line };
 
-    case "SET_ASSISTANT_THINKING":
-      return { ...state, isAssistantThinking: action.thinking };
+    case "START_THREAD": {
+      const thread: Thread = {
+        id: action.id,
+        anchor: action.anchor,
+        messages: [action.message],
+        pending: true,
+        collapsed: false,
+      };
+      return {
+        ...state,
+        threads: [...state.threads, thread],
+        composingAt: null,
+        isAssistantThinking: true,
+      };
+    }
+
+    case "APPEND_TO_THREAD":
+      return {
+        ...state,
+        isAssistantThinking: true,
+        threads: state.threads.map((t) =>
+          t.id === action.id ? { ...t, messages: [...t.messages, action.message], pending: true } : t,
+        ),
+      };
+
+    case "REPLY_TO_THREAD": {
+      // A reply with no id belongs to whichever thread is still waiting — the
+      // backend is stateless and older clients may not echo one back.
+      const target = action.id ?? state.threads.find((t) => t.pending)?.id ?? null;
+      if (target === null) return { ...state, isAssistantThinking: false };
+      return {
+        ...state,
+        isAssistantThinking: false,
+        threads: state.threads.map((t) =>
+          t.id === target
+            ? { ...t, messages: [...t.messages, action.message], pending: false, collapsed: false }
+            : t,
+        ),
+      };
+    }
+
+    case "TOGGLE_THREAD":
+      return {
+        ...state,
+        threads: state.threads.map((t) =>
+          t.id === action.id ? { ...t, collapsed: !t.collapsed } : t,
+        ),
+      };
+
+    case "CLOSE_THREAD":
+      return {
+        ...state,
+        threads: state.threads.filter((t) => t.id !== action.id),
+        annotations: state.annotations.filter((a) => a.threadId !== action.id),
+      };
+
+    case "SET_THREAD_LIST_OPEN":
+      return { ...state, threadListOpen: action.open };
 
     case "SET_RUNNING":
       // A new run supersedes whatever the assistant marked about the old one.
@@ -126,8 +193,13 @@ function reducer(state: WorkspaceState, action: WorkspaceAction): WorkspaceState
     case "SET_RUN_RESULT":
       return { ...state, lastTrace: action.trace, isRunning: false, debugStepIndex: 0 };
 
-    case "SET_ANNOTATIONS":
-      return { ...state, annotations: action.annotations };
+    case "SET_ANNOTATIONS": {
+      const threadId = action.annotations[0]?.threadId ?? null;
+      const kept = threadId
+        ? state.annotations.filter((a) => a.threadId !== threadId)
+        : state.annotations.filter((a) => a.threadId !== null);
+      return { ...state, annotations: [...kept, ...action.annotations].slice(-MAX_VISIBLE_ANNOTATIONS) };
+    }
 
     case "CLEAR_ANNOTATIONS":
       return { ...state, annotations: [] };
@@ -135,11 +207,11 @@ function reducer(state: WorkspaceState, action: WorkspaceAction): WorkspaceState
     case "SET_SHOW_INLINE_VALUES":
       return { ...state, showInlineValues: action.show };
 
+    case "SET_SHOW_MEMORY":
+      return { ...state, showMemory: action.show };
+
     case "SET_CONNECTION_ERROR":
       return { ...state, connectionError: action.message, isRunning: false, isAssistantThinking: false };
-
-    case "SET_TRACE_VIEW_MODE":
-      return { ...state, traceViewMode: action.mode };
 
     case "SET_DEBUG_STEP_INDEX":
       return { ...state, debugStepIndex: action.index };
@@ -171,7 +243,10 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as WorkspaceState;
-        dispatch({ type: "HYDRATE", state: { ...seedState(), ...parsed, annotations: [] } });
+        dispatch({
+          type: "HYDRATE",
+          state: { ...seedState(), ...parsed, annotations: [], composingAt: null },
+        });
       }
     } catch {
       /* private mode / blocked storage — defaults are fine */
@@ -184,7 +259,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       // Annotations are deliberately not persisted: they belong to one moment
       // in one conversation, and restoring them after a reload would point at
       // code the user may have edited in between.
-      const { annotations: _dropped, ...persisted } = state;
+      const { annotations: _marks, composingAt: _open, ...persisted } = state;
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
     } catch {
       /* ignore */

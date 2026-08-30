@@ -276,6 +276,31 @@
 .noesis-glyph--measured::before { background: rgb(var(--success)); }
 .noesis-glyph--current::before  { background: rgb(var(--accent)); box-shadow: 0 0 0 3px rgb(var(--accent) / 0.22); }
 
+/* "Ask here" — the affordance that makes the editor the way in. Same gesture
+   as a review comment, on the line the pointer is over. */
+.noesis-glyph--ask {
+  cursor: pointer;
+}
+.noesis-glyph--ask::before {
+  content: "?";
+  width: auto;
+  height: auto;
+  margin: 0;
+  border-radius: 3px;
+  background: none;
+  color: rgb(var(--fg-subtle));
+  font-family: var(--font-sans), sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.45;
+  text-align: center;
+  transition: color 120ms ease, background 120ms ease;
+}
+.noesis-glyph--ask:hover::before {
+  color: rgb(var(--accent));
+  background: rgb(var(--accent) / 0.16);
+}
+
 /* --- blocks between the lines (view zones) ------------------------------- */
 
 .noesis-zone {
@@ -283,6 +308,9 @@
 }
 
 .noesis-zone-card {
+  /* Prose in the editor still has to read like prose: the code column can be
+     1000px wide, a paragraph must not be. */
+  max-width: 760px;
   margin: 4px 14px 6px 0;
   padding: 8px 11px 9px;
   border: 1px solid rgb(var(--line));
@@ -293,6 +321,7 @@
   animation: noesis-zone-in 160ms ease-out;
 }
 .noesis-zone-card--ai       { border-left-color: rgb(var(--accent)); }
+.noesis-zone-card--ask      { border-left-color: rgb(var(--accent)); background: rgb(var(--surface)); }
 .noesis-zone-card--measured { border-left-color: rgb(var(--success)); }
 .noesis-zone-card--stale    { border-left-color: rgb(var(--line-strong)); opacity: 0.6; }
 
@@ -310,4 +339,15 @@
 .monaco-editor .monaco-hover .hover-contents {
   font-size: 12.5px;
   line-height: 1.55;
+}
+
+/* "denkt nach" — a quiet pulse, not a spinner. The assistant is reading the
+   student's code, and a spinner would suggest a progress bar exists. */
+.noesis-thinking::after {
+  content: "…";
+  animation: noesis-pulse 1.4s ease-in-out infinite;
+}
+@keyframes noesis-pulse {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 1; }
 }

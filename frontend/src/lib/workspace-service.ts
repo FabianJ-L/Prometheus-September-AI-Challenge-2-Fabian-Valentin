@@ -3,6 +3,7 @@
 import type { Dispatch } from "react";
 import type { WorkspaceAction } from "@/lib/workspace";
 import type {
+  Anchor,
   Annotation,
   ChatMessage,
   ExecutionTrace,
@@ -74,10 +75,22 @@ export class WorkspaceService {
         this.dispatch({ type: "SET_ANNOTATIONS", annotations });
         break;
       }
-      case "assistant_message":
-        this.dispatch({ type: "APPEND_CHAT_MESSAGE", message: envelope.payload as ChatMessage });
-        this.dispatch({ type: "SET_ASSISTANT_THINKING", thinking: false });
+      case "focus_step": {
+        // The assistant drives the debugger: "look at what happens here" takes
+        // the student there instead of asking them to find it.
+        const index = (envelope.payload as { index?: number })?.index;
+        if (typeof index === "number") this.dispatch({ type: "SET_DEBUG_STEP_INDEX", index });
         break;
+      }
+      case "assistant_message": {
+        const payload = envelope.payload as ChatMessage & { threadId?: string | null };
+        this.dispatch({
+          type: "REPLY_TO_THREAD",
+          id: payload.threadId ?? null,
+          message: { role: payload.role, content: payload.content, createdAt: payload.createdAt },
+        });
+        break;
+      }
       case "error": {
         const message = (envelope.payload as { message?: string })?.message ?? "Something went wrong.";
         this.dispatch({ type: "SET_CONNECTION_ERROR", message });
@@ -101,24 +114,48 @@ export class WorkspaceService {
     this.send({ type: "run_code", payload: { files, entryPath } });
   }
 
-  sendChatMessage(message: string, state: WorkspaceState): void {
-    const userTurn: ChatMessage = { role: "user", content: message, createdAt: new Date().toISOString() };
-    this.dispatch?.({ type: "APPEND_CHAT_MESSAGE", message: userTurn });
-    this.dispatch?.({ type: "SET_ASSISTANT_THINKING", thinking: true });
-    // Annotations belong to the reply that placed them; the next question
-    // gets a clean editor rather than accumulating marks from earlier turns.
-    this.dispatch?.({ type: "CLEAR_ANNOTATIONS" });
+  /**
+   * Ask a question. `anchor` is the line it was asked at — the whole point of
+   * asking in the editor rather than in a chat box, because the assistant then
+   * never has to guess what "this" refers to.
+   */
+  ask(message: string, anchor: Anchor | null, state: WorkspaceState): string {
+    const threadId = `t${Date.now().toString(36)}`;
+    const turn: ChatMessage = { role: "user", content: message, createdAt: new Date().toISOString() };
+    this.dispatch?.({ type: "START_THREAD", id: threadId, anchor, message: turn });
+    this.send({ type: "chat_message", payload: this.chatPayload(message, [], anchor, threadId, state) });
+    return threadId;
+  }
+
+  /** Continue an existing thread, keeping its anchor and its history. */
+  reply(threadId: string, message: string, state: WorkspaceState): void {
+    const thread = state.threads.find((t) => t.id === threadId);
+    if (!thread) return;
+    const turn: ChatMessage = { role: "user", content: message, createdAt: new Date().toISOString() };
+    this.dispatch?.({ type: "APPEND_TO_THREAD", id: threadId, message: turn });
     this.send({
       type: "chat_message",
-      payload: {
-        message,
-        history: state.chatHistory,
-        files: state.files,
-        activePath: state.activePath,
-        lastTrace: state.lastTrace,
-        debugStepIndex: state.traceViewMode === "debug" ? state.debugStepIndex : null,
-      },
+      payload: this.chatPayload(message, thread.messages, thread.anchor, threadId, state),
     });
+  }
+
+  private chatPayload(
+    message: string,
+    history: ChatMessage[],
+    anchor: Anchor | null,
+    threadId: string,
+    state: WorkspaceState,
+  ) {
+    return {
+      message,
+      history,
+      files: state.files,
+      activePath: state.activePath,
+      lastTrace: state.lastTrace,
+      debugStepIndex: state.lastTrace ? state.debugStepIndex : null,
+      anchor,
+      threadId,
+    };
   }
 }
 

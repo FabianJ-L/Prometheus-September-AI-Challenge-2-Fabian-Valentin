@@ -182,6 +182,7 @@ class Annotation(Wire):
     label: str | None = None  # short inline text
     body: str | None = None  # markdown, for notes
     variables: list[str] = Field(default_factory=list)  # for memory
+    thread_id: str | None = None  # the conversation that placed it
     stale: bool = False
 
 
@@ -202,15 +203,29 @@ class ChatMessage(Wire):
 
 
 class ChatRequest(Wire):
+    """One turn of one conversation.
+
+    ``anchor`` is what makes an in-editor question different from a chat
+    message: the student asked *at* a line, so the assistant never has to guess
+    which part of the file "this" refers to — and neither does the student have
+    to describe it.
+    """
+
     message: str
     history: list[ChatMessage] = Field(default_factory=list)
     files: list[ProjectFile] = Field(default_factory=list)
     active_path: str | None = None
     last_trace: ExecutionTrace | None = None
     debug_step_index: int | None = None
+    anchor: Anchor | None = None
+    thread_id: str | None = None
 
 
 class ChatResponse(Wire):
     message: ChatMessage
     annotations: list[Annotation] = Field(default_factory=list)
+    thread_id: str | None = None
+    #: Step the assistant wants the debugger moved to, so "look at what happens
+    #: here" actually takes the student there instead of asking them to find it.
+    focus_step: int | None = None
     mock: bool = False

@@ -50,11 +50,34 @@ def offline_annotations(
     files: list[ProjectFile],
     active_path: str | None,
     trace: ExecutionTrace | None,
+    asked_at: Anchor | None = None,
 ) -> list[Annotation]:
-    """Facts about the last run, placed on the lines they belong to."""
+    """Facts about the last run, placed on the lines they belong to.
+
+    When the student asked *at* a line, that line is what gets marked — an
+    answer that appears somewhere else is confusing even when it is correct.
+    """
 
     file = next((f for f in files if f.path == active_path), None) or (files[0] if files else None)
-    if file is None or trace is None:
+    if file is None:
+        return []
+
+    if asked_at is not None:
+        anchor = _anchor(file, asked_at.line)
+        if anchor is not None and trace is not None:
+            step = next((s for s in trace.steps if s.line == asked_at.line and s.source), None)
+            if step is not None:
+                return [
+                    Annotation(
+                        id="offline-asked",
+                        kind=AnnotationKind.memory,
+                        source=AnnotationSource.measured,
+                        anchor=anchor,
+                        variables=list(step.locals),
+                    )
+                ]
+
+    if trace is None:
         return []
 
     annotations: list[Annotation] = []

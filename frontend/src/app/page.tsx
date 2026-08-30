@@ -1,13 +1,24 @@
 "use client";
 
 import { useEffect } from "react";
-import { ChatPanel } from "@/components/workspace/ChatPanel";
 import { Editor } from "@/components/workspace/Editor";
 import { FileTree } from "@/components/workspace/FileTree";
-import { RunPanel } from "@/components/workspace/RunPanel";
+import { RunBar } from "@/components/workspace/RunBar";
+import { ThreadList } from "@/components/workspace/ThreadList";
 import { useWorkspace } from "@/lib/workspace";
 import { getWorkspaceService } from "@/lib/workspace-service";
 
+/**
+ * Three surfaces, three questions.
+ *
+ *   editor    where in the code   — marks, values, memory, the conversation
+ *   run bar   when in the run     — timeline and console
+ *   threads   an index of what has been asked, collapsed by default
+ *
+ * The editor gets the room because that is where everything now happens; the
+ * bar is a fixed strip rather than a third of the height, and the side panel
+ * is a rail until someone opens it.
+ */
 export default function WorkspacePage() {
   const { dispatch } = useWorkspace();
 
@@ -22,17 +33,15 @@ export default function WorkspacePage() {
       </aside>
 
       <section className="flex min-w-0 flex-1 flex-col">
-        <div className="min-h-0 flex-[2]">
+        <div className="min-h-0 flex-1">
           <Editor />
         </div>
-        <div className="min-h-0 flex-1 border-t border-line">
-          <RunPanel />
+        <div className="h-[168px] shrink-0 border-t border-line">
+          <RunBar />
         </div>
       </section>
 
-      <aside className="w-96 shrink-0 border-l border-line bg-surface">
-        <ChatPanel />
-      </aside>
+      <ThreadList />
     </div>
   );
 }

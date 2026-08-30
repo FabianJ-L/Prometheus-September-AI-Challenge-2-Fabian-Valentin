@@ -10,7 +10,8 @@ from types import SimpleNamespace
 import pytest
 
 from app.ai import client as client_module
-from app.models.schemas import AnnotationKind, AnnotationSource, ChatRequest, ProjectFile
+from app.core.executor import run_trace
+from app.models.schemas import Anchor, AnnotationKind, AnnotationSource, ChatRequest, ProjectFile
 from app.workspace import MAX_ANNOTATIONS, handle_chat
 
 SOURCE = "def summe(werte):\n    total = 0\n    for w in werte:\n        total = total + w\n    return total\n"
@@ -61,11 +62,12 @@ def ai(monkeypatch):
     return build
 
 
-def _request(message="Warum ist das Ergebnis falsch?"):
+def _request(message="Warum ist das Ergebnis falsch?", **extra):
     return ChatRequest(
         message=message,
         files=[ProjectFile(path="main.py", content=SOURCE)],
         active_path="main.py",
+        **extra,
     )
 
 
@@ -147,7 +149,14 @@ def test_tools_are_offered_to_the_model(ai):
     handle_chat(_request())
 
     names = {t["name"] for t in fake.requests[0]["tools"]}
-    assert names == {"mark_line", "mark_range", "add_note", "flag_problem", "show_memory"}
+    assert names == {
+        "mark_line",
+        "mark_range",
+        "add_note",
+        "flag_problem",
+        "focus_step",
+        "show_memory",
+    }
     assert fake.requests[0]["thinking"] == {"type": "adaptive"}
 
 
@@ -171,3 +180,69 @@ def test_a_transport_failure_still_returns_something_renderable(ai):
 
     assert reply.message.content
     assert reply.annotations == []
+
+
+# --- anchored questions and driving the debugger ---------------------------
+
+
+def test_the_anchor_reaches_the_model(ai):
+    _, fake = ai([SimpleNamespace(stop_reason="end_turn", content=[_text("Ja.")])])
+
+    handle_chat(_request("was passiert hier?", anchor=Anchor(path="main.py", line=4, snippet="total = total + w")))
+
+    prompt = fake.requests[0]["messages"][-1]["content"]
+    assert "The student is asking here" in prompt
+    assert "line 4" in prompt
+
+
+def test_annotations_carry_their_thread(ai):
+    ai(
+        [
+            SimpleNamespace(
+                stop_reason="tool_use",
+                content=[_tool_use("mark_line", {"line": 2, "snippet": "total = 0", "tone": "info"})],
+            ),
+            SimpleNamespace(stop_reason="end_turn", content=[_text("ok")]),
+        ]
+    )
+
+    reply = handle_chat(_request(thread_id="th-7"))
+
+    assert reply.thread_id == "th-7"
+    assert [a.thread_id for a in reply.annotations] == ["th-7"]
+
+
+def test_focus_step_moves_the_debugger(ai):
+    trace = run_trace(SOURCE + "summe([1, 2])\n", "main.py")
+    _, fake = ai(
+        [
+            SimpleNamespace(
+                stop_reason="tool_use",
+                content=[_tool_use("focus_step", {"step": 3, "because": "hier kippt total"})],
+            ),
+            SimpleNamespace(stop_reason="end_turn", content=[_text("Schau dort hin.")]),
+        ]
+    )
+
+    reply = handle_chat(_request(last_trace=trace))
+
+    assert reply.focus_step == 2  # 1-based in, 0-based index out
+    assert fake.tool_results == ["Debugger moved to step 3."]
+
+
+def test_focus_step_outside_the_run_is_refused(ai):
+    trace = run_trace("x = 1\n", "main.py")
+    _, fake = ai(
+        [
+            SimpleNamespace(
+                stop_reason="tool_use",
+                content=[_tool_use("focus_step", {"step": 900, "because": "irgendwo"})],
+            ),
+            SimpleNamespace(stop_reason="end_turn", content=[_text("Dann eben nicht.")]),
+        ]
+    )
+
+    reply = handle_chat(_request(last_trace=trace))
+
+    assert reply.focus_step is None
+    assert fake.tool_results[0].startswith("Not moved")

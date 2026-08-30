@@ -8,13 +8,15 @@ Client → server:
   chat_message   {"message": "...", "history": [<ChatMessage>...],
                   "files": [<ProjectFile>...], "activePath": "main.py",
                   "lastTrace": <ExecutionTrace> | null,
-                  "debugStepIndex": <int> | null}
+                  "debugStepIndex": <int> | null,
+                  "anchor": <Anchor> | null, "threadId": "..." | null}
 
 Server → client:
   trace_batch         {"steps": [<TraceStep>...]}   streamed while a run replays
   run_result          {<ExecutionTrace>}            final trace after run_code
   annotations         {"annotations": [<Annotation>...]}  editor marks for a reply
-  assistant_message   {<ChatMessage>}               full (non-streamed) reply
+  focus_step          {"index": <int>}              move the step debugger
+  assistant_message   {<ChatMessage>, "threadId": ...}  full (non-streamed) reply
   error               {"message": "..."}
 
 Annotations are sent *before* the message they belong to, so the editor is
@@ -74,7 +76,16 @@ async def workspace_socket(ws: WebSocket) -> None:
                             "payload": {"annotations": [a.wire() for a in reply.annotations]},
                         }
                     )
-                await ws.send_json({"type": "assistant_message", "payload": reply.message.wire()})
+                if reply.focus_step is not None:
+                    await ws.send_json(
+                        {"type": "focus_step", "payload": {"index": reply.focus_step}}
+                    )
+                await ws.send_json(
+                    {
+                        "type": "assistant_message",
+                        "payload": {**reply.message.wire(), "threadId": reply.thread_id},
+                    }
+                )
 
             else:
                 await ws.send_json({"type": "error", "payload": {"message": f"unknown type '{mtype}'"}})
