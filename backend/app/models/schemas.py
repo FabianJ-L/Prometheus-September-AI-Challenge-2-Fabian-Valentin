@@ -1,7 +1,10 @@
-"""Core data model for NOESIS.
+"""Core data model for NOESIS — code execution/tracing only.
 
-These types are the contract between the backend, the AI pipeline and the
-frontend. Keep `frontend/src/lib/types.ts` in sync with this file.
+These types are the contract between this backend and the frontend for
+running/tracing code. Keep `frontend/src/lib/types.ts` in sync with this file.
+The annotation/chat types (used only by the AI pipeline, which now lives
+entirely in the frontend) are defined there, not here — see
+`frontend/src/lib/types.ts`.
 
 Everything that crosses the wire inherits from :class:`Wire`, which serialises
 snake_case fields as camelCase. Python stays idiomatic, TypeScript stays
@@ -11,16 +14,10 @@ update.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
-
-
-def _now() -> datetime:
-    return datetime.now(UTC)
 
 
 class Wire(BaseModel):
@@ -122,110 +119,9 @@ class RunRequest(Wire):
 
 
 # ---------------------------------------------------------------------------
-# Annotations: the editor's second output channel
+# Note: the annotation types (Anchor, Annotation, AnnotationKind/Tone/Source)
+# and the chat types (ChatMessage, ChatRole, ChatRequest, ChatResponse) that
+# used to live here moved to the frontend along with the AI pipeline — see
+# `frontend/src/lib/types.ts`, which is now their canonical definition. This
+# backend no longer has anything to do with them.
 # ---------------------------------------------------------------------------
-
-
-class AnnotationKind(StrEnum):
-    line = "line"  # whole-line decoration, optional gutter glyph
-    range = "range"  # inline span: weight/colour, optional floating label
-    note = "note"  # block between the lines, markdown body
-    problem = "problem"  # squiggle + message, via Monaco markers
-    value = "value"  # inline value after the line (measured only)
-    memory = "memory"  # block hosting the memory diagram
-
-
-class AnnotationTone(StrEnum):
-    neutral = "neutral"
-    info = "info"
-    focus = "focus"
-    success = "success"
-    warning = "warning"
-    danger = "danger"
-
-
-class AnnotationSource(StrEnum):
-    """Where an annotation's claim comes from.
-
-    ``measured`` is derived from the trace and cannot be wrong. ``ai`` is an
-    interpretation and can be. The UI renders them in visibly different
-    languages, and that distinction is load-bearing — not decoration.
-    """
-
-    measured = "measured"
-    ai = "ai"
-
-
-class Anchor(Wire):
-    """Where an annotation attaches.
-
-    ``snippet`` is the text the author expected to find at ``line``. It is what
-    makes the anchor verifiable: the backend refuses to emit an annotation
-    whose snippet does not match the real file, and the frontend uses it to
-    detect when the user has edited the code out from under an annotation.
-    """
-
-    path: str
-    line: int
-    end_line: int | None = None
-    column: int | None = None
-    end_column: int | None = None
-    snippet: str | None = None
-
-
-class Annotation(Wire):
-    id: str
-    kind: AnnotationKind
-    source: AnnotationSource
-    anchor: Anchor
-    tone: AnnotationTone = AnnotationTone.neutral
-    label: str | None = None  # short inline text
-    body: str | None = None  # markdown, for notes
-    variables: list[str] = Field(default_factory=list)  # for memory
-    thread_id: str | None = None  # the conversation that placed it
-    stale: bool = False
-
-
-# ---------------------------------------------------------------------------
-# Chat (Socratic coding assistant)
-# ---------------------------------------------------------------------------
-
-
-class ChatRole(StrEnum):
-    user = "user"
-    assistant = "assistant"
-
-
-class ChatMessage(Wire):
-    role: ChatRole
-    content: str
-    created_at: datetime = Field(default_factory=_now)
-
-
-class ChatRequest(Wire):
-    """One turn of one conversation.
-
-    ``anchor`` is what makes an in-editor question different from a chat
-    message: the student asked *at* a line, so the assistant never has to guess
-    which part of the file "this" refers to — and neither does the student have
-    to describe it.
-    """
-
-    message: str
-    history: list[ChatMessage] = Field(default_factory=list)
-    files: list[ProjectFile] = Field(default_factory=list)
-    active_path: str | None = None
-    last_trace: ExecutionTrace | None = None
-    debug_step_index: int | None = None
-    anchor: Anchor | None = None
-    thread_id: str | None = None
-
-
-class ChatResponse(Wire):
-    message: ChatMessage
-    annotations: list[Annotation] = Field(default_factory=list)
-    thread_id: str | None = None
-    #: Step the assistant wants the debugger moved to, so "look at what happens
-    #: here" actually takes the student there instead of asking them to find it.
-    focus_step: int | None = None
-    mock: bool = False

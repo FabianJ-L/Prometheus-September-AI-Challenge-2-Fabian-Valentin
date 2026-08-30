@@ -16,26 +16,30 @@ CODE → PREDICT → EXECUTE → COMPARE → UNDERSTAND → RETRY
 ## Runtime
 
 ```
-        Next.js (App Router)  ──HTTP──▶  FastAPI  /api
+        Next.js (App Router)
+              │
+              ├──HTTP + WebSocket──▶  FastAPI  /api  (code run/trace only)
               │                            │
-              └──────WebSocket────────────▶│  /api/ws/session   (step streaming)
-                                           │
-              ┌────────────────────────────┼────────────────────────────┐
-              ▼                            ▼                            ▼
-        core.parser                  core.executor                core.student_model
-         (AST summary)             (settrace step tracer)        (concept mastery EMA)
-              │                            │                            │
-              └──────────────┬─────────────┘                            │
-                             ▼                                          │
-                     core.trace.check_prediction                        │
-                             │                                          │
-                             ▼                                          │
-                     ai.diagnostic.diagnose ───▶ ai.client (Anthropic)  │
-                             │        (mock fallback when no API key)    │
-                             ▼                                          │
-                   DiagnosticResult { misconception, concept_deltas,    │
-                                      first_turn (Socratic) } ──────────┘
+              │                            ▼
+              │                     core.parser + core.executor
+              │                     (AST summary, settrace step tracer)
+              │
+              └──same-origin POST──▶  /api/ai/chat   (Next.js route handler)
+                                            │
+                                            ▼
+                                  lib/ai/prompts.ts + lib/ai/tools.ts
+                                            │
+                                            ▼
+                                  Groq (openai/gpt-oss-20b), provider-swappable
+                                  (mock fallback when no API key — lib/ai/mock.ts)
+                                            │
+                                            ▼
+                       assistant reply + annotations + optional focus_step
 ```
+
+The chat/annotation AI pipeline runs entirely in the Next.js app — it never
+touches the FastAPI backend, which only executes/traces code (the one part
+that needs the Python sandbox and can't move to the browser).
 
 ## The AI pipeline (what makes this not-a-copilot)
 
@@ -47,12 +51,16 @@ CODE → PREDICT → EXECUTE → COMPARE → UNDERSTAND → RETRY
 
 ```
 code + last run
- └▶ execution trace         (core/executor.py)   deterministic, identity-aware
- └▶ context block           (ai/prompts.py)      numbered source + trace + aliases
-      └▶ Claude, with annotation tools  (ai/client.py + ai/tools.py)
+ └▶ execution trace         (backend/app/core/executor.py)   deterministic, identity-aware
+ └▶ context block           (frontend/src/lib/ai/prompts.ts) numbered source + trace + aliases
+      └▶ Groq, with annotation tools  (frontend/src/app/api/ai/chat/route.ts + lib/ai/tools.ts)
            ├▶ tool calls  → validated against the real file → annotations
            └▶ reply text  → the Socratic question
 ```
+
+The provider is swappable (`frontend/src/lib/ai/provider.ts`): Groq
+(`openai/gpt-oss-20b`) today, a config/adapter change away from anything
+else that speaks the same tool-calling contract.
 
 The model has **two output channels**. Prose goes to the chat; annotations go
 onto the code itself. Tool use rather than markup in the reply means a
@@ -93,12 +101,13 @@ so the split is enforced in the data model, not left to the copy.
 
 **Anchoring.** Every annotation carries `{line, snippet}` — the line number
 *and* the text expected on it. Line numbers alone are the most common way an
-LLM points at the wrong code. The backend rejects an annotation whose snippet
-matches nothing (`ai/tools.py`), relocates it when exactly one other line
-matches, and tells the model which happened so it can re-anchor inside the same
-turn. The frontend re-runs the same resolution on every keystroke
-(`lib/annotations.ts`); when the code moves out from under an annotation it is
-shown as *stale* rather than silently re-pointed.
+LLM points at the wrong code. The route handler rejects an annotation whose
+snippet matches nothing (`lib/ai/tools.ts`), relocates it when exactly one
+other line matches, and tells the model which happened so it can re-anchor
+inside the same turn. The frontend re-runs a separate resolution on every
+keystroke (`lib/annotations.ts`), independent of where the annotation came
+from; when the code moves out from under an annotation it is shown as *stale*
+rather than silently re-pointed.
 
 **Rendering** (`components/workspace/Editor.tsx`) uses three Monaco mechanisms:
 
@@ -115,10 +124,10 @@ plain `className` paints, the same decoration with `after` produces no DOM node
 at all. Content widgets anchored past the last column are the working
 equivalent.
 
-**Without an API key** the assistant says so plainly and `ai/mock.py` derives
-`measured` annotations from the trace instead — the error line, or the aliasing
-case with a memory diagram. The demo still shows a marked-up editor offline; it
-just never puts invented insight in the model's voice.
+**Without an API key** the assistant says so plainly and `lib/ai/mock.ts`
+derives `measured` annotations from the trace instead — the error line, or the
+aliasing case with a memory diagram. The demo still shows a marked-up editor
+offline; it just never puts invented insight in the model's voice.
 
 ## Deliberately out of scope for v1
 

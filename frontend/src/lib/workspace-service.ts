@@ -4,8 +4,9 @@ import type { Dispatch } from "react";
 import type { WorkspaceAction } from "@/lib/workspace";
 import type {
   Anchor,
-  Annotation,
   ChatMessage,
+  ChatRequestPayload,
+  ChatResponsePayload,
   ExecutionTrace,
   ProjectFile,
   TraceStep,
@@ -70,27 +71,6 @@ export class WorkspaceService {
       case "run_result":
         this.dispatch({ type: "SET_RUN_RESULT", trace: envelope.payload as ExecutionTrace });
         break;
-      case "annotations": {
-        const annotations = (envelope.payload as { annotations?: Annotation[] })?.annotations ?? [];
-        this.dispatch({ type: "SET_ANNOTATIONS", annotations });
-        break;
-      }
-      case "focus_step": {
-        // The assistant drives the debugger: "look at what happens here" takes
-        // the student there instead of asking them to find it.
-        const index = (envelope.payload as { index?: number })?.index;
-        if (typeof index === "number") this.dispatch({ type: "SET_DEBUG_STEP_INDEX", index });
-        break;
-      }
-      case "assistant_message": {
-        const payload = envelope.payload as ChatMessage & { threadId?: string | null };
-        this.dispatch({
-          type: "REPLY_TO_THREAD",
-          id: payload.threadId ?? null,
-          message: { role: payload.role, content: payload.content, createdAt: payload.createdAt },
-        });
-        break;
-      }
       case "error": {
         const message = (envelope.payload as { message?: string })?.message ?? "Something went wrong.";
         this.dispatch({ type: "SET_CONNECTION_ERROR", message });
@@ -118,12 +98,15 @@ export class WorkspaceService {
    * Ask a question. `anchor` is the line it was asked at — the whole point of
    * asking in the editor rather than in a chat box, because the assistant then
    * never has to guess what "this" refers to.
+   *
+   * Chat turns go to the Next.js `/api/ai/chat` route (not the WebSocket) —
+   * the AI pipeline runs in the frontend, so there is no backend hop for it.
    */
   ask(message: string, anchor: Anchor | null, state: WorkspaceState): string {
     const threadId = `t${Date.now().toString(36)}`;
     const turn: ChatMessage = { role: "user", content: message, createdAt: new Date().toISOString() };
     this.dispatch?.({ type: "START_THREAD", id: threadId, anchor, message: turn });
-    this.send({ type: "chat_message", payload: this.chatPayload(message, [], anchor, threadId, state) });
+    void this.sendChat(this.chatPayload(message, [], anchor, threadId, state));
     return threadId;
   }
 
@@ -133,10 +116,43 @@ export class WorkspaceService {
     if (!thread) return;
     const turn: ChatMessage = { role: "user", content: message, createdAt: new Date().toISOString() };
     this.dispatch?.({ type: "APPEND_TO_THREAD", id: threadId, message: turn });
-    this.send({
-      type: "chat_message",
-      payload: this.chatPayload(message, thread.messages, thread.anchor, threadId, state),
-    });
+    void this.sendChat(this.chatPayload(message, thread.messages, thread.anchor, threadId, state));
+  }
+
+  /**
+   * POST one chat turn to the frontend's own AI route and dispatch the
+   * result — in the same order the WS `chat_message` reply used to arrive
+   * in (annotations → focus step → assistant message), so the reducer needs
+   * no changes.
+   */
+  private async sendChat(payload: ChatRequestPayload): Promise<void> {
+    try {
+      const res = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(`ai chat failed: ${res.status}`);
+      const data = (await res.json()) as ChatResponsePayload;
+
+      if (data.annotations.length > 0) {
+        this.dispatch?.({ type: "SET_ANNOTATIONS", annotations: data.annotations });
+      }
+      if (data.focusStep !== null) {
+        this.dispatch?.({ type: "SET_DEBUG_STEP_INDEX", index: data.focusStep });
+      }
+      this.dispatch?.({
+        type: "REPLY_TO_THREAD",
+        id: data.threadId,
+        message: {
+          role: data.message.role,
+          content: data.message.content,
+          createdAt: data.message.createdAt,
+        },
+      });
+    } catch {
+      this.dispatch?.({ type: "SET_CONNECTION_ERROR", message: "Could not reach the assistant." });
+    }
   }
 
   private chatPayload(
@@ -145,7 +161,7 @@ export class WorkspaceService {
     anchor: Anchor | null,
     threadId: string,
     state: WorkspaceState,
-  ) {
+  ): ChatRequestPayload {
     return {
       message,
       history,

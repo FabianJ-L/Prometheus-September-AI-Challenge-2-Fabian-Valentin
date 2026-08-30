@@ -22,8 +22,8 @@ back — building a per-student **mental model** of what they actually understan
 
 ```
 .
-├── backend/     FastAPI service: AST parser, step executor, Socratic/annotation AI pipeline
-├── frontend/    Next.js (App Router) app: the code editor, trace debugger and chat UI
+├── backend/     FastAPI service: AST parser, sandboxed step executor for the Python code runner
+├── frontend/    Next.js (App Router) app: the code editor, trace debugger, chat UI and the Socratic/annotation AI pipeline
 ├── docs/        Architecture, data model, demo script
 ├── .env.example Shared local env template
 └── Makefile     Dev convenience targets
@@ -43,8 +43,10 @@ Prerequisites: **Node 20+**, **Python 3.11+**, and [`uv`](https://docs.astral.sh
 cp .env.example .env
 cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env.local
-# (optional) put your ANTHROPIC_API_KEY in backend/.env — without it the
-# chat assistant runs in MOCK mode with a canned reply.
+# (optional) put your GROQ_API_KEY in frontend/.env.local — without it the
+# chat assistant runs in MOCK mode with a canned reply. The AI pipeline
+# (Groq, model openai/gpt-oss-20b, swappable via frontend/src/lib/ai/) lives
+# entirely in the Next.js frontend, not the backend.
 
 # 2. Backend  →  http://localhost:8000  (docs at /docs)
 cd backend

@@ -47,6 +47,8 @@ export interface Thread {
  * names carrying the same `$ref` are two names for one object.
  * ---------------------------------------------------------------------- */
 
+export const REF_KEY = "$ref";
+
 export interface HeapRef {
   $ref: string;
 }
@@ -137,6 +139,30 @@ export interface Annotation {
   variables: string[]; // for memory diagrams
   threadId: string | null; // the conversation that placed it
   stale: boolean;
+}
+
+/* -------------------------------------------------------------------------
+ * Wire shapes for the AI chat turn (`POST /api/ai/chat`)
+ * ---------------------------------------------------------------------- */
+
+export interface ChatRequestPayload {
+  message: string;
+  history: ChatMessage[];
+  files: ProjectFile[];
+  activePath: string | null;
+  lastTrace: ExecutionTrace | null;
+  debugStepIndex: number | null;
+  anchor: Anchor | null;
+  threadId: string | null;
+}
+
+export interface ChatResponsePayload {
+  message: ChatMessage;
+  annotations: Annotation[];
+  threadId: string | null;
+  /** Step the assistant wants the debugger moved to. */
+  focusStep: number | null;
+  mock: boolean;
 }
 
 export interface WorkspaceState {

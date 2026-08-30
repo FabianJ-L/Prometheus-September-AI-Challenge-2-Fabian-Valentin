@@ -1,15 +1,6 @@
 """Shared Pydantic models."""
 
 from app.models.schemas import (
-    Anchor,
-    Annotation,
-    AnnotationKind,
-    AnnotationSource,
-    AnnotationTone,
-    ChatMessage,
-    ChatRequest,
-    ChatResponse,
-    ChatRole,
     ExecutionTrace,
     HeapEntry,
     HeapObject,
@@ -20,15 +11,6 @@ from app.models.schemas import (
 )
 
 __all__ = [
-    "Anchor",
-    "Annotation",
-    "AnnotationKind",
-    "AnnotationSource",
-    "AnnotationTone",
-    "ChatMessage",
-    "ChatRequest",
-    "ChatResponse",
-    "ChatRole",
     "ExecutionTrace",
     "HeapEntry",
     "HeapObject",
