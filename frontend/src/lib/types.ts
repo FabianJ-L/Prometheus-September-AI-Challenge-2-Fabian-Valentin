@@ -39,6 +39,8 @@ export interface ExecutionTrace {
   truncated: boolean;
 }
 
+export type TraceViewMode = "output" | "debug";
+
 export interface WorkspaceState {
   files: ProjectFile[];
   activePath: string | null;
@@ -47,4 +49,9 @@ export interface WorkspaceState {
   isRunning: boolean;
   isAssistantThinking: boolean;
   connectionError: string | null;
+  /** "output": plain stdout, like actually running the program.
+   *  "debug": step through lines with the variable state at each one. */
+  traceViewMode: TraceViewMode;
+  /** Index into `lastTrace.steps` the debug view is currently showing. */
+  debugStepIndex: number;
 }

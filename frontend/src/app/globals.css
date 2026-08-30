@@ -149,6 +149,13 @@
   }
 }
 
+/* Current line in the step debugger (RunPanel → "Nachvollziehen"), applied
+   to the Monaco editor via a line decoration. */
+.debug-current-line {
+  background: rgb(var(--accent) / 0.14);
+  border-left: 2px solid rgb(var(--accent));
+}
+
 /* Appearance → Animations: off */
 :root[data-animations="off"] *,
 :root[data-animations="off"] *::before,

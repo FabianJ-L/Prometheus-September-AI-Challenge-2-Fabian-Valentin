@@ -9,7 +9,14 @@ import {
   type Dispatch,
   type ReactNode,
 } from "react";
-import type { ChatMessage, ExecutionTrace, ProjectFile, TraceStep, WorkspaceState } from "@/lib/types";
+import type {
+  ChatMessage,
+  ExecutionTrace,
+  ProjectFile,
+  TraceStep,
+  TraceViewMode,
+  WorkspaceState,
+} from "@/lib/types";
 import { STARTER_ENTRY_PATH, STARTER_FILES } from "@/mock/starter-project";
 
 const STORAGE_KEY = "noesis.workspace.v1";
@@ -23,6 +30,8 @@ function seedState(): WorkspaceState {
     isRunning: false,
     isAssistantThinking: false,
     connectionError: null,
+    traceViewMode: "output",
+    debugStepIndex: 0,
   };
 }
 
@@ -38,6 +47,8 @@ export type WorkspaceAction =
   | { type: "APPEND_TRACE_STEP"; step: TraceStep }
   | { type: "SET_RUN_RESULT"; trace: ExecutionTrace }
   | { type: "SET_CONNECTION_ERROR"; message: string | null }
+  | { type: "SET_TRACE_VIEW_MODE"; mode: TraceViewMode }
+  | { type: "SET_DEBUG_STEP_INDEX"; index: number }
   | { type: "RESET_WORKSPACE" }
   | { type: "HYDRATE"; state: WorkspaceState };
 
@@ -81,7 +92,7 @@ function reducer(state: WorkspaceState, action: WorkspaceAction): WorkspaceState
 
     case "SET_RUNNING":
       return action.running
-        ? { ...state, isRunning: true, lastTrace: null, connectionError: null }
+        ? { ...state, isRunning: true, lastTrace: null, connectionError: null, debugStepIndex: 0 }
         : { ...state, isRunning: false };
 
     case "APPEND_TRACE_STEP": {
@@ -97,10 +108,16 @@ function reducer(state: WorkspaceState, action: WorkspaceAction): WorkspaceState
     }
 
     case "SET_RUN_RESULT":
-      return { ...state, lastTrace: action.trace, isRunning: false };
+      return { ...state, lastTrace: action.trace, isRunning: false, debugStepIndex: 0 };
 
     case "SET_CONNECTION_ERROR":
       return { ...state, connectionError: action.message, isRunning: false, isAssistantThinking: false };
+
+    case "SET_TRACE_VIEW_MODE":
+      return { ...state, traceViewMode: action.mode };
+
+    case "SET_DEBUG_STEP_INDEX":
+      return { ...state, debugStepIndex: action.index };
 
     case "RESET_WORKSPACE":
       return seedState();
