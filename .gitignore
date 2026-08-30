@@ -58,6 +58,9 @@ out/
 *.tsbuildinfo
 coverage/
 
+# Monaco assets vendored into public/ by frontend/scripts/copy-monaco.mjs
+frontend/public/monaco/
+
 # ---------------------------------------------------------------------------
 # Data / scratch
 # ---------------------------------------------------------------------------

@@ -59,6 +59,11 @@ npm run dev
 
 Or from the repo root: `make setup` then `make dev`.
 
+`npm install` also vendors the Monaco editor into `frontend/public/monaco`
+(via `frontend/scripts/copy-monaco.mjs`), so the editor loads from this app
+rather than a CDN and works offline. The directory is gitignored — re-run
+`npm install` if it goes missing.
+
 ---
 
 ## Scope for v1 (deliberately small)

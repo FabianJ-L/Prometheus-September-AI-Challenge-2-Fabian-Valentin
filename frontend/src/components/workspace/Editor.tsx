@@ -1,11 +1,16 @@
 "use client";
 
-import MonacoEditor, { type OnMount } from "@monaco-editor/react";
+import MonacoEditor, { loader, type OnMount } from "@monaco-editor/react";
 import { useEffect, useRef } from "react";
 import { useSettings } from "@/lib/settings";
 import { useWorkspace } from "@/lib/workspace";
 
 const DEBOUNCE_MS = 300;
+
+// Serve Monaco from `public/monaco` instead of the default jsDelivr CDN, so the
+// editor works offline. `npm install` refreshes the copy via the postinstall
+// script in package.json.
+loader.config({ paths: { vs: "/monaco/vs" } });
 
 /** Monaco wrapper bound to the active file. Python only for now — `language`
  * comes straight from the file, so adding more languages later is a data
