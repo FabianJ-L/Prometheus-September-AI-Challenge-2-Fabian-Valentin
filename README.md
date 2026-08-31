@@ -29,8 +29,10 @@ back — building a per-student **mental model** of what they actually understan
 └── Makefile     Dev convenience targets
 ```
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full picture and
-[docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) for the 120-second demo.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full picture,
+[docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) for the 120-second demo, and
+[docs/AI_STRATEGY.md](docs/AI_STRATEGY.md) for where the AI pipeline goes
+next.
 
 ---
 
