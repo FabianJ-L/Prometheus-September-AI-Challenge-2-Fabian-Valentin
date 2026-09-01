@@ -43,7 +43,13 @@ export async function POST(req: NextRequest) {
 
   if (!provider.isConfigured) {
     // No key: say so plainly, and let the trace speak for itself.
-    const marks = offlineAnnotations(body.files, body.activePath, body.lastTrace, body.anchor).map((a) => ({
+    const marks = offlineAnnotations(
+      body.files,
+      body.activePath,
+      body.lastTrace,
+      body.anchor,
+      body.prediction,
+    ).map((a) => ({
       ...a,
       threadId: body.threadId,
     }));
@@ -103,7 +109,14 @@ export async function POST(req: NextRequest) {
     return `Placed on line ${annotation.anchor.line}.`;
   }
 
-  const context = renderContextBlock(body.files, body.activePath, body.lastTrace, body.debugStepIndex, body.anchor);
+  const context = renderContextBlock(
+    body.files,
+    body.activePath,
+    body.lastTrace,
+    body.debugStepIndex,
+    body.anchor,
+    body.prediction,
+  );
   const turns = buildMessages(body.history, body.message, context);
   const collected: string[] = [];
 

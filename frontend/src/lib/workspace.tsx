@@ -19,7 +19,11 @@ import type {
   TraceStep,
   WorkspaceState,
 } from "@/lib/types";
-import { STARTER_ENTRY_PATH, STARTER_FILES } from "@/mock/starter-project";
+import {
+  STARTER_ENTRY_PATH,
+  STARTER_FILES,
+  STARTER_PREDICTION_TARGET,
+} from "@/mock/starter-project";
 
 const STORAGE_KEY = "noesis.workspace.v3";
 
@@ -41,6 +45,7 @@ function seedState(): WorkspaceState {
     showMemory: false,
     composingAt: null,
     threadListOpen: false,
+    prediction: null,
   };
 }
 
@@ -66,6 +71,8 @@ export type WorkspaceAction =
   | { type: "CLEAR_ANNOTATIONS" }
   | { type: "SET_SHOW_INLINE_VALUES"; show: boolean }
   | { type: "SET_SHOW_MEMORY"; show: boolean }
+  | { type: "SUBMIT_PREDICTION"; value: string }
+  | { type: "RESET_PREDICTION" }
   | { type: "RESET_WORKSPACE" }
   | { type: "HYDRATE"; state: WorkspaceState };
 
@@ -78,6 +85,9 @@ function reducer(state: WorkspaceState, action: WorkspaceAction): WorkspaceState
       return {
         ...state,
         files: state.files.map((f) => (f.path === action.path ? { ...f, content: action.content } : f)),
+        // A prediction was made against the code as it stood; once it
+        // changes, the prediction no longer applies to the run it gates.
+        prediction: null,
       };
 
     case "CREATE_FILE": {
@@ -209,6 +219,15 @@ function reducer(state: WorkspaceState, action: WorkspaceAction): WorkspaceState
 
     case "SET_SHOW_MEMORY":
       return { ...state, showMemory: action.show };
+
+    case "SUBMIT_PREDICTION":
+      return {
+        ...state,
+        prediction: { target: STARTER_PREDICTION_TARGET, value: action.value },
+      };
+
+    case "RESET_PREDICTION":
+      return { ...state, prediction: null };
 
     case "SET_CONNECTION_ERROR":
       return { ...state, connectionError: action.message, isRunning: false, isAssistantThinking: false };

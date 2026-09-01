@@ -8,7 +8,7 @@
  * `{role: "system"}` message — see the comment on `buildMessages` below.
  */
 
-import { REF_KEY, type Anchor, type ChatMessage, type ExecutionTrace, type Heap, type ProjectFile, type TraceStep, type TraceValue } from "@/lib/types";
+import { REF_KEY, type Anchor, type ChatMessage, type ExecutionTrace, type Heap, type PredictionContext, type ProjectFile, type TraceStep, type TraceValue } from "@/lib/types";
 import type { ChatCompletionMessage } from "./provider";
 
 export const SYSTEM = `You are NOESIS, an AI coding assistant embedded next to a code editor. You
@@ -63,6 +63,32 @@ which part they mean, and you should not describe the location back to them.
   the reply text so the conversation stays readable.
 - Your reply text must stand on its own. Someone who cannot see the
   annotations should still understand you.
+
+## Worked example
+
+Context block says: student predicted \`total\` would be \`21\`; the run
+actually produced \`12\`; the mismatch was flagged as not yet diagnosed. They
+ask "why is it 12 and not 21?"
+
+A good reply text:
+
+> Right before the loop body runs, \`total\` already holds a value from the
+> previous turn. What does \`=\` do with that old value — keep it, or throw it
+> away?
+
+...plus exactly one tool call: \`mark_range\` on the assignment inside the
+loop body (the exact line text, e.g. \`total = number\`), tone \`focus\`.
+Point at the operation the question is about; let the question do the
+teaching, not a description of where the bug is.
+
+## Diagnosing a wrong prediction
+
+When the context block's \`## Student's prediction\` section shows a mismatch,
+your first guiding question should target *why their mental model produced
+that specific wrong value* — not just confirm it's wrong. "Assignment instead
+of accumulation" and "printed before the loop finished" are different bugs
+with different questions; read the actual predicted/actual values before
+asking.
 
 ## Hard rules
 
@@ -159,6 +185,7 @@ export function renderContextBlock(
   lastTrace: ExecutionTrace | null,
   debugStepIndex: number | null,
   anchor: Anchor | null,
+  prediction: PredictionContext | null = null,
 ): string {
   const parts: string[] = [];
 
@@ -191,6 +218,18 @@ export function renderContextBlock(
     }
   } else {
     parts.push("## Last run\n(the student hasn't run this yet)");
+  }
+
+  if (prediction !== null) {
+    parts.push(
+      `## Student's prediction\n` +
+        `Before running, they predicted: \`${prediction.predicted}\`\n` +
+        `Actual: \`${prediction.actual}\`\n` +
+        (prediction.matches
+          ? "This matched."
+          : "This did NOT match. Diagnose *why their mental model produced " +
+            "that specific wrong value* — don't just say it's wrong."),
+    );
   }
 
   if (anchor !== null) {

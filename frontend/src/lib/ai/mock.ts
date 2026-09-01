@@ -10,7 +10,7 @@
  * these annotations state what the run did, never what it means.
  */
 
-import { REF_KEY, type Anchor, type Annotation, type AnnotationKind, type ExecutionTrace, type ProjectFile, type TraceValue } from "@/lib/types";
+import { REF_KEY, type Anchor, type Annotation, type AnnotationKind, type ExecutionTrace, type PredictionContext, type ProjectFile, type TraceValue } from "@/lib/types";
 
 function lineText(file: ProjectFile, line: number): string | null {
   const lines = file.content.split("\n");
@@ -78,9 +78,48 @@ export function offlineAnnotations(
   activePath: string | null,
   trace: ExecutionTrace | null,
   askedAt: Anchor | null = null,
+  prediction: PredictionContext | null = null,
 ): Annotation[] {
   const file = files.find((f) => f.path === activePath) ?? files[0];
   if (!file) return [];
+
+  // 0. A fresh wrong prediction is the most useful moment to mark — state
+  // the two facts side by side, never why they differ (mock mode can't
+  // diagnose, only measure).
+  if (prediction !== null && !prediction.matches && trace !== null) {
+    const last = [...trace.steps].reverse().find((s) => s.source);
+    const anchor = last !== undefined ? anchorAt(file, last.line) : null;
+    if (anchor !== null) {
+      return [
+        {
+          id: "offline-prediction-mismatch",
+          kind: "problem" as AnnotationKind,
+          source: "measured",
+          anchor,
+          tone: "warning",
+          label: `Vorhersage war ${prediction.predicted}, tatsächlich ${prediction.actual}`,
+          body: null,
+          variables: [],
+          threadId: null,
+          stale: false,
+        },
+        {
+          id: "offline-prediction-mismatch-note",
+          kind: "note" as AnnotationKind,
+          source: "measured",
+          anchor: { ...anchor },
+          tone: "neutral",
+          label: null,
+          body:
+            `Deine Vorhersage war **${prediction.predicted}**, tatsächlich ` +
+            `ist die Ausgabe **${prediction.actual}**.`,
+          variables: [],
+          threadId: null,
+          stale: false,
+        },
+      ];
+    }
+  }
 
   if (askedAt !== null) {
     const anchor = anchorAt(file, askedAt.line);

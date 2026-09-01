@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { Editor } from "@/components/workspace/Editor";
 import { FileTree } from "@/components/workspace/FileTree";
+import { PredictionBar } from "@/components/workspace/PredictionBar";
 import { RunBar } from "@/components/workspace/RunBar";
 import { ThreadList } from "@/components/workspace/ThreadList";
 import { useWorkspace } from "@/lib/workspace";
@@ -35,6 +36,9 @@ export default function WorkspacePage() {
       <section className="flex min-w-0 flex-1 flex-col">
         <div className="min-h-0 flex-1">
           <Editor />
+        </div>
+        <div className="h-11 shrink-0 border-t border-line">
+          <PredictionBar />
         </div>
         <div className="h-[168px] shrink-0 border-t border-line">
           <RunBar />

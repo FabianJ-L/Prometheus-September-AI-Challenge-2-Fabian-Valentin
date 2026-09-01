@@ -44,6 +44,7 @@ export function RunBar() {
     showInlineValues,
     showMemory,
     debugStepIndex,
+    prediction,
   } = state;
   const [playing, setPlaying] = useState(false);
 
@@ -86,7 +87,13 @@ export function RunBar() {
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-11 shrink-0 items-center gap-2 border-b border-line px-3">
-        <Button size="sm" variant="primary" onClick={run} disabled={!activePath || isRunning}>
+        <Button
+          size="sm"
+          variant="primary"
+          onClick={run}
+          disabled={!activePath || isRunning || prediction === null}
+          title={prediction === null ? "Erst eine Vorhersage abgeben" : undefined}
+        >
           <Play size={13} />
           {isRunning ? "Läuft…" : "Run"}
         </Button>

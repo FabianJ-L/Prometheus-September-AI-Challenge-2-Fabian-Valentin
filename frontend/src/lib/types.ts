@@ -145,6 +145,26 @@ export interface Annotation {
  * Wire shapes for the AI chat turn (`POST /api/ai/chat`)
  * ---------------------------------------------------------------------- */
 
+/* -------------------------------------------------------------------------
+ * Predict-before-run
+ *
+ * A prediction is the student's committed guess, made before a run exists.
+ * Once a trace comes back, it's diffed into a `PredictionContext` — the
+ * comparison the UI renders and the AI reasons about.
+ * ---------------------------------------------------------------------- */
+
+export interface Prediction {
+  target: string; // human-readable label, e.g. "Ausgabe"
+  value: string; // what the student typed, raw
+}
+
+export interface PredictionContext {
+  target: string;
+  predicted: string; // trimmed
+  actual: string; // trace.stdout, trimmed
+  matches: boolean;
+}
+
 export interface ChatRequestPayload {
   message: string;
   history: ChatMessage[];
@@ -154,6 +174,7 @@ export interface ChatRequestPayload {
   debugStepIndex: number | null;
   anchor: Anchor | null;
   threadId: string | null;
+  prediction: PredictionContext | null;
 }
 
 export interface ChatResponsePayload {
@@ -187,4 +208,6 @@ export interface WorkspaceState {
   composingAt: number | null;
   /** The side panel is an index of threads, not the primary way in. */
   threadListOpen: boolean;
+  /** The student's committed guess for this run, made before executing. */
+  prediction: Prediction | null;
 }
