@@ -161,8 +161,7 @@ export interface Prediction {
 export interface PredictionContext {
   target: string;
   predicted: string; // trimmed
-  actual: string; // trace.stdout, trimmed
-  matches: boolean;
+  actual: string; // trace.stdout, trimmed — raw, unjudged
 }
 
 export interface ChatRequestPayload {

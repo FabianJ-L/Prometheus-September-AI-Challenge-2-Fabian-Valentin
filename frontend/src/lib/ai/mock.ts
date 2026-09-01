@@ -83,36 +83,25 @@ export function offlineAnnotations(
   const file = files.find((f) => f.path === activePath) ?? files[0];
   if (!file) return [];
 
-  // 0. A fresh wrong prediction is the most useful moment to mark — state
-  // the two facts side by side, never why they differ (mock mode can't
-  // diagnose, only measure).
-  if (prediction !== null && !prediction.matches && trace !== null) {
+  // 0. A fresh prediction is the most useful moment to mark — state the two
+  // facts side by side. Never a verdict: mock mode can measure, not judge
+  // whether they match (see lib/prediction.ts).
+  if (prediction !== null && trace !== null) {
     const last = [...trace.steps].reverse().find((s) => s.source);
     const anchor = last !== undefined ? anchorAt(file, last.line) : null;
     if (anchor !== null) {
       return [
         {
-          id: "offline-prediction-mismatch",
-          kind: "problem" as AnnotationKind,
-          source: "measured",
-          anchor,
-          tone: "warning",
-          label: `Vorhersage war ${prediction.predicted}, tatsächlich ${prediction.actual}`,
-          body: null,
-          variables: [],
-          threadId: null,
-          stale: false,
-        },
-        {
-          id: "offline-prediction-mismatch-note",
+          id: "offline-prediction",
           kind: "note" as AnnotationKind,
           source: "measured",
-          anchor: { ...anchor },
+          anchor,
           tone: "neutral",
           label: null,
           body:
-            `Deine Vorhersage war **${prediction.predicted}**, tatsächlich ` +
-            `ist die Ausgabe **${prediction.actual}**.`,
+            `Deine Vorhersage war **${prediction.predicted}**, die ` +
+            `tatsächliche Ausgabe ist **${prediction.actual}**. Ob das ` +
+            "zusammenpasst, ist deine Einschätzung — dafür braucht es kein Modell.",
           variables: [],
           threadId: null,
           stale: false,

@@ -66,9 +66,8 @@ which part they mean, and you should not describe the location back to them.
 
 ## Worked example
 
-Context block says: student predicted \`total\` would be \`21\`; the run
-actually produced \`12\`; the mismatch was flagged as not yet diagnosed. They
-ask "why is it 12 and not 21?"
+Context block says: student predicted \`total\` would be \`21\`; the run's
+actual output was \`12\`. They ask "why is it 12 and not 21?"
 
 A good reply text:
 
@@ -81,14 +80,16 @@ loop body (the exact line text, e.g. \`total = number\`), tone \`focus\`.
 Point at the operation the question is about; let the question do the
 teaching, not a description of where the bug is.
 
-## Diagnosing a wrong prediction
+## Reading a prediction
 
-When the context block's \`## Student's prediction\` section shows a mismatch,
-your first guiding question should target *why their mental model produced
-that specific wrong value* — not just confirm it's wrong. "Assignment instead
-of accumulation" and "printed before the loop finished" are different bugs
-with different questions; read the actual predicted/actual values before
-asking.
+When the context block has a \`## Student's prediction\` section, compare the
+predicted value against the actual output yourself first — nothing upstream
+has already judged whether they match, so don't assume either way. A
+prediction can be correct in substance even if it isn't phrased identically
+to the output (a number without its print label still counts). If they
+genuinely diverge, your first guiding question should target *why their
+mental model produced that specific wrong value* — not just confirm it's
+wrong. If they match, say so briefly rather than treating it as a non-event.
 
 ## Hard rules
 
@@ -224,11 +225,9 @@ export function renderContextBlock(
     parts.push(
       `## Student's prediction\n` +
         `Before running, they predicted: \`${prediction.predicted}\`\n` +
-        `Actual: \`${prediction.actual}\`\n` +
-        (prediction.matches
-          ? "This matched."
-          : "This did NOT match. Diagnose *why their mental model produced " +
-            "that specific wrong value* — don't just say it's wrong."),
+        `Actual output:\n\`\`\`\n${prediction.actual}\n\`\`\`\n` +
+        "Nothing has judged whether these match — decide that yourself " +
+        "before replying.",
     );
   }
 

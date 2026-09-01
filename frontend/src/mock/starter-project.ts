@@ -1,4 +1,4 @@
-import type { ExecutionTrace, ProjectFile } from "@/lib/types";
+import type { ProjectFile } from "@/lib/types";
 
 /**
  * Seeds a fresh workspace on first load. `main.py` has a deliberate small
@@ -64,23 +64,12 @@ def letter_grade(value):
 export const STARTER_ENTRY_PATH = "main.py";
 
 /**
- * Predict-before-run config for the one starter lesson. `total` (the buggy
- * variable) is local to `average()`, so it never reaches
- * `ExecutionTrace.finalLocals` (module-level globals only) — the printed
- * output is what's actually predictable at module scope, and it's what a
- * future second lesson would also always have.
+ * Predict-before-run config for the one starter lesson. What counts as
+ * "matching" isn't decided here or anywhere in code — the raw prediction and
+ * the run's raw stdout both go to the AI (`## Student's prediction` in
+ * `lib/ai/prompts.ts`), which judges them the way a person would. No
+ * per-lesson parsing to maintain, and it stays correct no matter what a
+ * program prints.
  */
 export const STARTER_PREDICTION_TARGET = "average(grades)";
 export const STARTER_PREDICTION_PROMPT = "Bevor du ausführst: Welchen Wert hat `average(grades)`?";
-
-/**
- * Pulls this lesson's one predictable quantity out of the trace. The
- * student is never asked to reproduce the program's full output — no
- * matter how much `main.py` grows to print, this always returns exactly the
- * one number the prediction is about (falling back to the full stdout only
- * if the expected shape isn't there, e.g. the run errored first).
- */
-export function extractStarterActual(trace: ExecutionTrace): string {
-  const match = trace.stdout.match(/Average:\s*(-?\d+(?:[.,]\d+)?)/);
-  return match ? match[1] : trace.stdout.trim();
-}

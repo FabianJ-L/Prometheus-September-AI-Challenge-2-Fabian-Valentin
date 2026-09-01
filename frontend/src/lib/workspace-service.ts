@@ -3,7 +3,6 @@
 import type { Dispatch } from "react";
 import type { WorkspaceAction } from "@/lib/workspace";
 import { evaluatePrediction } from "@/lib/prediction";
-import { extractStarterActual } from "@/mock/starter-project";
 import type {
   Anchor,
   ChatMessage,
@@ -173,10 +172,7 @@ export class WorkspaceService {
       debugStepIndex: state.lastTrace ? state.debugStepIndex : null,
       anchor,
       threadId,
-      prediction: evaluatePrediction(
-        state.prediction,
-        state.lastTrace ? extractStarterActual(state.lastTrace) : null,
-      ),
+      prediction: evaluatePrediction(state.prediction, state.lastTrace?.stdout ?? null),
     };
   }
 }
